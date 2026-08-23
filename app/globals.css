@@ -346,3 +346,522 @@ body {
 .shipment-card button:hover {
   background: #1d4ed8;
 }
+
+/* Landing Page */
+
+.landing-page {
+  min-height: 100vh;
+  background: #f4f7fb;
+  color: #111827;
+}
+
+.landing-nav {
+  height: 72px;
+  padding: 0 7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.brand {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.nav-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.nav-login,
+.nav-register {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-login {
+  border: 1px solid #2563eb;
+  background: white;
+  color: #2563eb;
+}
+
+.nav-login:hover {
+  background: #eff6ff;
+}
+
+.nav-register {
+  border: none;
+  background: #2563eb;
+  color: white;
+}
+
+.nav-register:hover {
+  background: #1d4ed8;
+}
+
+.hero-section {
+  min-height: 540px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background:
+    linear-gradient(
+      135deg,
+      #eff6ff 0%,
+      #ffffff 50%,
+      #eef4ff 100%
+    );
+}
+
+.hero-content {
+  width: 100%;
+  max-width: 850px;
+  text-align: center;
+}
+
+.hero-badge {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.hero-content h1 {
+  margin: 0;
+  font-size: 52px;
+  line-height: 1.15;
+  color: #0f172a;
+}
+
+.hero-content h1 span {
+  color: #2563eb;
+}
+
+.hero-content > p {
+  max-width: 650px;
+  margin: 22px auto 32px;
+  color: #64748b;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.tracking-form {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 8px;
+  display: flex;
+  gap: 8px;
+  background: white;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+}
+
+.tracking-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 15px 16px;
+  border: none;
+  outline: none;
+  color: #111827;
+  background: white;
+  font-size: 16px;
+}
+
+.tracking-form input::placeholder {
+  color: #9ca3af;
+}
+
+.tracking-form button {
+  padding: 15px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tracking-form button:hover {
+  background: #1d4ed8;
+}
+
+.tracking-form button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-message {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.auth-message button {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-message button:hover {
+  text-decoration: underline;
+}
+
+.features-section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 55px 20px 70px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.feature-card {
+  padding: 30px;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.06);
+}
+
+.feature-icon {
+  font-size: 32px;
+  margin-bottom: 15px;
+}
+
+.feature-card h3 {
+  margin: 0 0 10px;
+  color: #111827;
+  font-size: 20px;
+}
+
+.feature-card p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  .landing-nav {
+    padding: 0 20px;
+  }
+
+  .hero-content h1 {
+    font-size: 38px;
+  }
+
+  .hero-content > p {
+    font-size: 16px;
+  }
+
+  .tracking-form {
+    flex-direction: column;
+  }
+
+  .tracking-form button {
+    width: 100%;
+  }
+
+  .features-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dashboard */
+
+.dashboard-page {
+  min-height: 100vh;
+  background: #f4f7fb;
+  color: #111827;
+}
+
+.dashboard-nav {
+  height: 72px;
+  padding: 0 7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dashboard-brand {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.logout-button {
+  padding: 10px 18px;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  background: white;
+  color: #dc2626;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: #fef2f2;
+}
+
+.dashboard-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 55px 20px;
+}
+
+.dashboard-header {
+  margin-bottom: 35px;
+}
+
+.dashboard-header h1 {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 34px;
+}
+
+.dashboard-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 17px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.dashboard-card {
+  padding: 30px;
+  text-align: left;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 8px 25px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+
+.dashboard-card span {
+  font-size: 34px;
+}
+
+.dashboard-card h2 {
+  margin: 16px 0 8px;
+  color: #111827;
+  font-size: 21px;
+}
+
+.dashboard-card p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-nav {
+    padding: 0 20px;
+  }
+}
+
+.back-home-button {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.back-home-button:hover {
+  color: #2563eb;
+}
+
+/* =========================================
+   TRACKING PAGE - TEXT VISIBILITY FIX
+   ========================================= */
+
+.tracking-page {
+  color: #111827 !important;
+}
+
+.tracking-page h1 {
+  color: #111827 !important;
+}
+
+.tracking-page h2 {
+  color: #1f2937 !important;
+}
+
+.tracking-page h3 {
+  color: #1f2937 !important;
+}
+
+.tracking-page p {
+  color: #475569 !important;
+}
+
+.tracking-page label {
+  color: #111827 !important;
+}
+
+.tracking-page span {
+  color: #111827 !important;
+}
+
+.tracking-page strong {
+  color: #111827 !important;
+}
+
+.tracking-page div {
+  color: inherit;
+}
+
+/* Input */
+.tracking-page input {
+  color: #111827 !important;
+  background: #ffffff !important;
+}
+
+.tracking-page input::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Select */
+.tracking-page select {
+  color: #111827 !important;
+  background: #ffffff !important;
+}
+
+/* Normal buttons */
+.tracking-page button {
+  color: #111827 !important;
+}
+
+/* Blue buttons */
+.tracking-page button[type="submit"] {
+  color: #ffffff !important;
+}
+
+/* Links */
+.tracking-page a {
+  color: #2563eb !important;
+}
+
+/* Cards */
+.tracking-page section,
+.tracking-page article {
+  color: #111827 !important;
+}
+
+/* Make important tracking information dark */
+.tracking-page .card {
+  color: #111827 !important;
+}
+
+.tracking-page .card p {
+  color: #475569 !important;
+}
+
+/* ================================
+   SHIPTRACK TEXT VISIBILITY FIX
+   ================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: #111827 !important;
+}
+
+p {
+  color: #475569 !important;
+}
+
+label {
+  color: #374151 !important;
+}
+
+input,
+textarea,
+select {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b !important;
+}
+
+button {
+  color: #111827;
+}
+/* ================================
+   SHIPTRACK TEXT VISIBILITY FIX
+   ================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: #111827 !important;
+}
+
+p {
+  color: #475569 !important;
+}
+
+label {
+  color: #374151 !important;
+}
+
+input,
+textarea,
+select {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b !important;
+}

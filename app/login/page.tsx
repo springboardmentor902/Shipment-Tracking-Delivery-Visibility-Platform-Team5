@@ -55,7 +55,7 @@ export default function LoginPage() {
 
       alert("Login successful!");
 
-      router.push("/shipments");
+      router.push("/home");
     } catch (error) {
       console.error(error);
       alert("Unable to connect to server");

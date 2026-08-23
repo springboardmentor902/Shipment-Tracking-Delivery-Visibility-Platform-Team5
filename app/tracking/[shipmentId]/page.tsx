@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   GoogleMap,
-  LoadScript,
   Marker,
   Polyline,
+  useJsApiLoader,
 } from "@react-google-maps/api";
 import { Client, type StompSubscription } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
@@ -19,6 +19,9 @@ type RouteInfo = {
   destination?: string;
   distanceKm?: number;
   estimatedTimeMinutes?: number;
+  actualTimeMinutes?: number;
+  trafficCondition?: string;
+  createdAt?: string;
   lastLatitude?: number;
   lastLongitude?: number;
   lastLocation?: string;
@@ -43,29 +46,48 @@ type RoutePathPoint = {
 const googleLibraries: ("routes")[] = ["routes"];
 
 const defaultCenter = {
-  lat: 13.1001,
-  lng: 80.2901,
+  lat: 13.0827,
+  lng: 80.2707,
 };
 
 export default function TrackingPage() {
   const params = useParams<{ shipmentId: string }>();
   const router = useRouter();
+
   const shipmentId = params?.shipmentId;
 
   const [route, setRoute] = useState<RouteInfo | null>(null);
+
   const [liveLocation, setLiveLocation] =
     useState<LiveLocation | null>(null);
-  const [routePath, setRoutePath] = useState<RoutePathPoint[]>([]);
+
+  const [routePath, setRoutePath] =
+    useState<RoutePathPoint[]>([]);
+
+  const [mapInstance, setMapInstance] =
+    useState<google.maps.Map | null>(null);
+
   const [connected, setConnected] = useState(false);
+
   const [loading, setLoading] = useState(true);
-  const [mapLoaded, setMapLoaded] = useState(false);
+
   const [error, setError] = useState("");
 
   const apiBase =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8080";
 
   const googleMapsApiKey =
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
+  const {
+    isLoaded: mapLoaded,
+    loadError: mapLoadError,
+  } = useJsApiLoader({
+    id: "google-map-script",
+    googleMapsApiKey,
+    libraries: googleLibraries,
+  });
 
   useEffect(() => {
     if (!shipmentId) {
@@ -80,28 +102,64 @@ export default function TrackingPage() {
     }
 
     let subscription: StompSubscription | undefined;
+
     let disposed = false;
 
     const loadRoute = async () => {
       try {
+        setLoading(true);
+        setError("");
+
         const response = await fetch(
           `${apiBase}/api/routes/${shipmentId}`,
           {
+            method: "GET",
             headers: {
               Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
             },
+            cache: "no-store",
           }
         );
 
         if (!response.ok) {
-          throw new Error("Route could not be loaded");
+          if (response.status === 401) {
+            localStorage.removeItem("token");
+            router.replace("/login");
+            return;
+          }
+
+          if (response.status === 403) {
+            throw new Error(
+              "You are not authorized to view this shipment route."
+            );
+          }
+
+          if (response.status === 404) {
+            throw new Error(
+              "Route not found for this shipment."
+            );
+          }
+
+          throw new Error(
+            `Route could not be loaded (${response.status})`
+          );
         }
 
         const data = await response.json();
-        const routeData = Array.isArray(data) ? data[0] : data;
+
+        const routeData = Array.isArray(data)
+          ? data[0]
+          : data;
 
         if (!routeData) {
-          throw new Error("No route found for this shipment");
+          throw new Error(
+            "No route found for this shipment."
+          );
+        }
+
+        if (disposed) {
+          return;
         }
 
         setRoute(routeData);
@@ -125,13 +183,17 @@ export default function TrackingPage() {
           });
         }
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load route"
-        );
+        if (!disposed) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load route."
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!disposed) {
+          setLoading(false);
+        }
       }
     };
 
@@ -146,11 +208,6 @@ export default function TrackingPage() {
       },
 
       reconnectDelay: 5000,
-
-      onWebSocketError: () => {
-        setConnected(false);
-        setError("WebSocket connection failed");
-      },
     });
 
     client.onConnect = () => {
@@ -159,37 +216,62 @@ export default function TrackingPage() {
       }
 
       setConnected(true);
-      setError("");
 
       subscription = client.subscribe(
         `/topic/shipments/${shipmentId}`,
         (message) => {
-          const update: LiveLocation = JSON.parse(message.body);
-          setLiveLocation(update);
+          try {
+            const update: LiveLocation =
+              JSON.parse(message.body);
+
+            if (!disposed) {
+              setLiveLocation(update);
+            }
+          } catch (err) {
+            console.error(
+              "Invalid live location message:",
+              err
+            );
+          }
         }
       );
     };
 
     client.onDisconnect = () => {
-      setConnected(false);
+      if (!disposed) {
+        setConnected(false);
+      }
     };
 
     client.onStompError = () => {
-      setConnected(false);
-      setError("Live tracking connection failed");
+      if (!disposed) {
+        setConnected(false);
+      }
+    };
+
+    client.onWebSocketError = () => {
+      if (!disposed) {
+        setConnected(false);
+      }
     };
 
     client.activate();
 
     return () => {
       disposed = true;
+
       subscription?.unsubscribe();
+
       void client.deactivate();
     };
   }, [shipmentId, router, apiBase]);
 
   useEffect(() => {
-    if (!mapLoaded || !route?.origin || !route?.destination) {
+    if (
+      !mapLoaded ||
+      !route?.origin ||
+      !route?.destination
+    ) {
       return;
     }
 
@@ -197,8 +279,11 @@ export default function TrackingPage() {
 
     const calculateRoute = async () => {
       try {
-const { Route } = await google.maps.importLibrary("routes") as any;        
-const result = await Route.computeRoutes({
+       const routesLibrary = await google.maps.importLibrary("routes");
+
+const Route = (routesLibrary as any).Route;
+
+        const result = await Route.computeRoutes({
           origin: route.origin,
           destination: route.destination,
           travelMode: "DRIVING",
@@ -214,30 +299,43 @@ const result = await Route.computeRoutes({
           return;
         }
 
-        const calculatedRoute = result.routes?.[0];
+        const calculatedRoute =
+          result.routes?.[0];
 
         if (!calculatedRoute?.path) {
-          setError("Google Maps could not calculate the route");
+          setError(
+            "Google Maps could not calculate the route."
+          );
           return;
         }
 
-      const path = calculatedRoute.path.map((point: any) => ({
-  lat:
-    typeof point.lat === "function"
-      ? point.lat()
-      : point.lat,
-  lng:
-    typeof point.lng === "function"
-      ? point.lng()
-      : point.lng,
-}));
+        const path =
+          calculatedRoute.path.map(
+            (point) => ({
+              lat:
+                typeof point.lat === "function"
+                  ? point.lat()
+                  : point.lat,
 
-        setRoutePath(path);
+              lng:
+                typeof point.lng === "function"
+                  ? point.lng()
+                  : point.lng,
+            })
+          );
+
+        if (!cancelled) {
+          setRoutePath(path);
+        }
       } catch (err) {
         if (!cancelled) {
-          console.error("Google Routes failed:", err);
+          console.error(
+            "Google Routes failed:",
+            err
+          );
+
           setError(
-            "Google Maps route could not be loaded"
+            "Google Maps route could not be loaded."
           );
         }
       }
@@ -248,13 +346,49 @@ const result = await Route.computeRoutes({
     return () => {
       cancelled = true;
     };
-  }, [mapLoaded, route]);
+  }, [
+    mapLoaded,
+    route?.origin,
+    route?.destination,
+  ]);
+
+  /*
+   * Native Google Maps Polyline
+   *
+   * We are NOT removing the blue route.
+   * We are creating the same Polyline directly
+   * on the actual Google Maps instance.
+   */
+  useEffect(() => {
+    if (
+      !mapInstance ||
+      routePath.length === 0
+    ) {
+      return;
+    }
+
+    const polyline =
+      new google.maps.Polyline({
+        path: routePath,
+        geodesic: true,
+        strokeColor: "#2563eb",
+        strokeOpacity: 0.9,
+        strokeWeight: 5,
+        map: mapInstance,
+      });
+
+    return () => {
+      polyline.setMap(null);
+    };
+  }, [mapInstance, routePath]);
 
   const latitude =
-    liveLocation?.latitude ?? route?.lastLatitude;
+    liveLocation?.latitude ??
+    route?.lastLatitude;
 
   const longitude =
-    liveLocation?.longitude ?? route?.lastLongitude;
+    liveLocation?.longitude ??
+    route?.lastLongitude;
 
   const mapCenter = useMemo(() => {
     if (
@@ -272,7 +406,11 @@ const result = await Route.computeRoutes({
     }
 
     return defaultCenter;
-  }, [latitude, longitude, routePath]);
+  }, [
+    latitude,
+    longitude,
+    routePath,
+  ]);
 
   const directionsUrl = route
     ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
@@ -285,7 +423,13 @@ const result = await Route.computeRoutes({
   if (loading) {
     return (
       <main style={styles.center}>
-        Loading tracking details...
+        <div style={styles.loadingBox}>
+          <h2>Loading shipment tracking...</h2>
+
+          <p>
+            Please wait while we load the route.
+          </p>
+        </div>
       </main>
     );
   }
@@ -293,7 +437,57 @@ const result = await Route.computeRoutes({
   if (!googleMapsApiKey) {
     return (
       <main style={styles.center}>
-        Google Maps API key is missing.
+        <div style={styles.loadingBox}>
+          <h2>Google Maps configuration missing</h2>
+
+          <p>
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not
+            configured.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (mapLoadError) {
+    return (
+      <main style={styles.center}>
+        <div style={styles.loadingBox}>
+          <h2>Google Maps could not be loaded</h2>
+
+          <p>
+            Please check your Google Maps API key
+            and configuration.
+          </p>
+
+          <button
+            style={styles.backButton}
+            onClick={() => router.back()}
+          >
+            Go Back
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (!route) {
+    return (
+      <main style={styles.center}>
+        <div style={styles.loadingBox}>
+          <h2>Shipment Tracking</h2>
+
+          <p>
+            {error || "Route not found."}
+          </p>
+
+          <button
+            style={styles.backButton}
+            onClick={() => router.back()}
+          >
+            Go Back
+          </button>
+        </div>
       </main>
     );
   }
@@ -301,6 +495,7 @@ const result = await Route.computeRoutes({
   return (
     <main style={styles.page}>
       <section style={styles.card}>
+
         <div style={styles.header}>
           <div>
             <h1 style={styles.title}>
@@ -315,9 +510,11 @@ const result = await Route.computeRoutes({
           <span
             style={{
               ...styles.status,
+
               backgroundColor: connected
                 ? "#dcfce7"
                 : "#fee2e2",
+
               color: connected
                 ? "#166534"
                 : "#991b1b",
@@ -335,42 +532,58 @@ const result = await Route.computeRoutes({
           </p>
         )}
 
-        {route && (
-          <div style={styles.routeBox}>
-            <div>
-              <strong>Origin</strong>
-              <p>
-                {route.origin || "Not available"}
-              </p>
-            </div>
+        <div style={styles.routeBox}>
 
-            <div>
-              <strong>Destination</strong>
-              <p>
-                {route.destination ||
-                  "Not available"}
-              </p>
-            </div>
+          <div>
+            <strong style={styles.routeLabel}>
+              Origin
+            </strong>
 
-            <div>
-              <strong>Distance</strong>
-              <p>
-                {route.distanceKm
-                  ? `${route.distanceKm} km`
-                  : "Not available"}
-              </p>
-            </div>
-
-            <div>
-              <strong>Estimated Time</strong>
-              <p>
-                {route.estimatedTimeMinutes
-                  ? `${route.estimatedTimeMinutes} minutes`
-                  : "Not available"}
-              </p>
-            </div>
+            <p style={styles.routeValue}>
+              {route.origin ||
+                "Not available"}
+            </p>
           </div>
-        )}
+
+          <div>
+            <strong style={styles.routeLabel}>
+              Destination
+            </strong>
+
+            <p style={styles.routeValue}>
+              {route.destination ||
+                "Not available"}
+            </p>
+          </div>
+
+          <div>
+            <strong style={styles.routeLabel}>
+              Distance
+            </strong>
+
+            <p style={styles.routeValue}>
+              {route.distanceKm !== undefined &&
+              route.distanceKm !== null
+                ? `${route.distanceKm} km`
+                : "Not available"}
+            </p>
+          </div>
+
+          <div>
+            <strong style={styles.routeLabel}>
+              Estimated Time
+            </strong>
+
+            <p style={styles.routeValue}>
+              {route.estimatedTimeMinutes !==
+                undefined &&
+              route.estimatedTimeMinutes !== null
+                ? `${route.estimatedTimeMinutes} minutes`
+                : "Not available"}
+            </p>
+          </div>
+
+        </div>
 
         <div style={styles.locationBox}>
           <h2 style={styles.sectionTitle}>
@@ -409,15 +622,25 @@ const result = await Route.computeRoutes({
           )}
         </div>
 
-        <LoadScript
-          googleMapsApiKey={googleMapsApiKey}
-          libraries={googleLibraries}
-          onLoad={() => setMapLoaded(true)}
-        >
+        {!mapLoaded ? (
+          <div style={styles.mapLoading}>
+            Loading Google Maps...
+          </div>
+        ) : (
           <GoogleMap
             mapContainerStyle={styles.map}
             center={mapCenter}
-            zoom={routePath.length > 0 ? 7 : 15}
+            zoom={
+              routePath.length > 0
+                ? 7
+                : 15
+            }
+            onLoad={(map) =>
+              setMapInstance(map)
+            }
+            onUnmount={() =>
+              setMapInstance(null)
+            }
             options={{
               streetViewControl: false,
               mapTypeControl: false,
@@ -434,31 +657,26 @@ const result = await Route.computeRoutes({
                   title="Current driver location"
                 />
               )}
-
-            {routePath.length > 0 && (
-              <Polyline
-                path={routePath}
-                options={{
-                  strokeColor: "#2563eb",
-                  strokeOpacity: 0.9,
-                  strokeWeight: 5,
-                  geodesic: true,
-                }}
-              />
-            )}
           </GoogleMap>
-        </LoadScript>
-
-        {route && (
-          <a
-            href={directionsUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={styles.link}
-          >
-            Open planned route in Google Maps
-          </a>
         )}
+
+        <a
+          href={directionsUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={styles.link}
+        >
+          Open planned route in Google Maps
+        </a>
+
+        <button
+          type="button"
+          onClick={() => router.back()}
+          style={styles.backButton}
+        >
+          ← Back
+        </button>
+
       </section>
     </main>
   );
@@ -475,10 +693,20 @@ const styles = {
     minHeight: "100vh",
     display: "grid",
     placeItems: "center",
+    background: "#f3f6fb",
+  },
+
+  loadingBox: {
+    background: "#ffffff",
+    padding: "35px",
+    borderRadius: "16px",
+    textAlign: "center" as const,
+    boxShadow:
+      "0 10px 30px rgba(15, 23, 42, 0.10)",
   },
 
   card: {
-    maxWidth: "900px",
+    maxWidth: "1000px",
     margin: "0 auto",
     padding: "28px",
     borderRadius: "20px",
@@ -526,6 +754,17 @@ const styles = {
     padding: "18px",
     borderRadius: "12px",
     background: "#f8fafc",
+    color: "#111827",
+  },
+
+  routeLabel: {
+    color: "#111827",
+    fontWeight: 700,
+  },
+
+  routeValue: {
+    color: "#374151",
+    marginTop: "6px",
   },
 
   locationBox: {
@@ -540,6 +779,16 @@ const styles = {
     marginTop: 0,
   },
 
+  mapLoading: {
+    width: "100%",
+    height: "420px",
+    borderRadius: "14px",
+    display: "grid",
+    placeItems: "center",
+    background: "#f1f5f9",
+    color: "#475569",
+  },
+
   map: {
     width: "100%",
     height: "420px",
@@ -551,5 +800,17 @@ const styles = {
     marginTop: "18px",
     color: "#1d4ed8",
     fontWeight: 700,
+  },
+
+  backButton: {
+    display: "block",
+    marginTop: "20px",
+    padding: "10px 18px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#2563eb",
+    color: "#ffffff",
+    fontWeight: 600,
+    cursor: "pointer",
   },
 };
