@@ -2,6 +2,7 @@ package com.shiptrack.shiptrack_pro.service.impl;
  
 import com.shiptrack.shiptrack_pro.dto.LoginRequest;
 import com.shiptrack.shiptrack_pro.dto.LoginResponse;
+import com.shiptrack.shiptrack_pro.dto.ProfileUpdateRequest;
 import com.shiptrack.shiptrack_pro.dto.RegisterRequest;
 import com.shiptrack.shiptrack_pro.dto.UserResponse;
 import com.shiptrack.shiptrack_pro.entity.User;
@@ -131,5 +132,41 @@ public class UserServiceImpl implements UserService {
                 .status(user.getStatus())
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    @Override
+    public UserResponse updateProfile(Long userId, ProfileUpdateRequest request) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "User not found"
+                        ));
+
+        user.setFullName(request.getFullName());
+        user.setPhone(request.getPhone());
+        user.setProfileImageUrl(request.getProfileImageUrl());
+
+        User updatedUser = userRepository.save(user);
+
+        return mapToResponse(updatedUser);
+    }
+
+    @Override
+    public UserResponse updateUserStatus(Long userId, String status) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "User not found"
+                        ));
+
+        user.setStatus(status);
+
+        User updatedUser = userRepository.save(user);
+
+        return mapToResponse(updatedUser);
     }
 }
