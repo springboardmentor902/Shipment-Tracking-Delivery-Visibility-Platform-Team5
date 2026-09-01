@@ -5,6 +5,8 @@ import com.shiptrack.shiptrack_pro.entity.Shipment;
 import com.shiptrack.shiptrack_pro.entity.TrackingEvent;
 import com.shiptrack.shiptrack_pro.repository.ShipmentRepository;
 import com.shiptrack.shiptrack_pro.repository.TrackingEventRepository;
+import com.shiptrack.shiptrack_pro.service.ETAService;
+import com.shiptrack.shiptrack_pro.service.NotificationService;
 import com.shiptrack.shiptrack_pro.service.TrackingEventService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,7 +21,9 @@ import java.util.List;
 public class TrackingEventServiceImpl implements TrackingEventService {
 
     private final TrackingEventRepository trackingEventRepository;
+    private final NotificationService notificationService;
     private final ShipmentRepository shipmentRepository;
+    private final ETAService etaService;
 
     @Override
     public TrackingEvent addEvent(
@@ -40,7 +44,26 @@ public class TrackingEventServiceImpl implements TrackingEventService {
                 .eventTimestamp(LocalDateTime.now())
                 .build();
 
-        return trackingEventRepository.save(event);
+        TrackingEvent savedEvent =
+                trackingEventRepository.save(event);
+
+        // Recalculate ETA after a new tracking event
+        etaService.calculateAndSave(shipmentId);
+
+        // Create notification for the shipment update
+        if (shipment.getCreatedBy() != null) {
+            notificationService.createNotification(
+                    shipment.getCreatedBy(),
+                    shipmentId,
+                    "Shipment Update",
+                    "Shipment " + shipment.getTrackingNumber()
+                            + " has a new tracking update: "
+                            + request.getStatus(),
+                    "SHIPMENT_UPDATE"
+            );
+        }
+
+        return savedEvent;
     }
 
     @Override

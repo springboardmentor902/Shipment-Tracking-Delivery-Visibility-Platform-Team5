@@ -47,4 +47,16 @@ public class Route {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+    
+    @Column(name = "last_latitude", precision = 10, scale = 7)
+    private BigDecimal lastLatitude;
+
+    @Column(name = "last_longitude", precision = 10, scale = 7)
+    private BigDecimal lastLongitude;
+
+    @Column(name = "last_location")
+    private String lastLocation;
+
+    @Column(name = "last_location_at")
+    private LocalDateTime lastLocationAt;
 }

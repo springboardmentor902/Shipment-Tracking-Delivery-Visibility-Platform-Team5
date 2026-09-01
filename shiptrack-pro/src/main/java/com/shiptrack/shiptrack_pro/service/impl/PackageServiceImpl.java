@@ -53,6 +53,7 @@ public class PackageServiceImpl implements PackageService {
             Long shipmentId,
             String email) {
 
+        // Check whether the logged-in user can access this shipment
         getVisibleShipment(shipmentId, email);
 
         return packageRepository
@@ -68,24 +69,89 @@ public class PackageServiceImpl implements PackageService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new RuntimeException("User not found"));
+                        new RuntimeException(
+                                "User not found: " + email
+                        )
+                );
 
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() ->
-                        new RuntimeException("Shipment not found"));
+                        new RuntimeException(
+                                "Shipment not found: " + shipmentId
+                        )
+                );
 
-        String role = user.getRole().toUpperCase();
+        String role = user.getRole() == null
+                ? ""
+                : user.getRole().trim().toUpperCase();
+
+        System.out.println(
+                "========== PACKAGE ACCESS DEBUG =========="
+        );
+
+        System.out.println(
+                "Email: " + email
+        );
+
+        System.out.println(
+                "User ID: " + user.getId()
+        );
+
+        System.out.println(
+                "Role: [" + role + "]"
+        );
+
+        System.out.println(
+                "Shipment ID: " + shipment.getId()
+        );
+
+        System.out.println(
+                "Assigned Operator ID: "
+                        + shipment.getAssignedOperatorId()
+        );
+
+        System.out.println(
+                "Created By: "
+                        + shipment.getCreatedBy()
+        );
+
+        boolean operatorMatches =
+                user.getId().equals(
+                        shipment.getAssignedOperatorId()
+                );
+
+        System.out.println(
+                "Operator ID matches: "
+                        + operatorMatches
+        );
 
         boolean allowed =
                 role.equals("ADMINISTRATOR")
+
                 || role.equals("SUPPORT_AGENT")
-                || ((role.equals("CUSTOMER")
-                    || role.equals("BUSINESS_CLIENT"))
+
+                || (
+                    (
+                        role.equals("CUSTOMER")
+                        || role.equals("BUSINESS_CLIENT")
+                    )
                     && user.getId().equals(
-                            shipment.getCreatedBy()))
-                || (role.equals("LOGISTICS_OPERATOR")
-                    && user.getId().equals(
-                            shipment.getAssignedOperatorId()));
+                            shipment.getCreatedBy()
+                    )
+                )
+
+                || (
+                    role.equals("LOGISTICS_OPERATOR")
+                    && operatorMatches
+                );
+
+        System.out.println(
+                "Access allowed: " + allowed
+        );
+
+        System.out.println(
+                "=========================================="
+        );
 
         if (!allowed) {
             throw new AccessDeniedException(
@@ -96,7 +162,8 @@ public class PackageServiceImpl implements PackageService {
         return shipment;
     }
 
-    private PackageResponse toResponse(Package packageEntity) {
+    private PackageResponse toResponse(
+            Package packageEntity) {
 
         return PackageResponse.builder()
                 .id(packageEntity.getId())
@@ -106,7 +173,9 @@ public class PackageServiceImpl implements PackageService {
                 .weight(packageEntity.getWeight())
                 .dimensions(packageEntity.getDimensions())
                 .quantity(packageEntity.getQuantity())
-                .declaredValue(packageEntity.getDeclaredValue())
+                .declaredValue(
+                        packageEntity.getDeclaredValue()
+                )
                 .fragile(packageEntity.getFragile())
                 .description(packageEntity.getDescription())
                 .build();

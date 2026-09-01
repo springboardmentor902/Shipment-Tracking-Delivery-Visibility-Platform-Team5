@@ -3,11 +3,9 @@ package com.shiptrack.shiptrack_pro.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiptrack.shiptrack_pro.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -16,7 +14,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -36,10 +33,9 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // Provides ObjectMapper for GoogleMapsService
     @Bean
     public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+        return new ObjectMapper().findAndRegisterModules();
     }
 
     @Bean
@@ -85,137 +81,288 @@ public class SecurityConfig {
             HttpSecurity http) throws Exception {
 
         http
-            .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable())
 
-            .cors(cors -> cors.configurationSource(
-                    corsConfigurationSource()
-            ))
+                .cors(cors -> cors.configurationSource(
+                        corsConfigurationSource()
+                ))
 
-            .sessionManagement(session ->
-                    session.sessionCreationPolicy(
-                            SessionCreationPolicy.STATELESS
-                    )
-            )
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
 
-            .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> auth
 
-                    .requestMatchers(
-                            HttpMethod.OPTIONS,
-                            "/**"
-                    ).permitAll()
+                        // ==========================================
+                        // AUTHENTICATION
+                        // ==========================================
 
-                    .requestMatchers(
-                            "/api/auth/**"
-                    ).permitAll()
+                        .requestMatchers("/api/auth/**")
+                        .permitAll()
 
-                    .requestMatchers(
-                            HttpMethod.GET,
-                            "/api/shipments/distance"
-                    ).permitAll()
 
-                    .requestMatchers(
-                            HttpMethod.POST,
-                            "/api/shipments"
-                    ).hasAnyRole(
-                            "CUSTOMER",
-                            "BUSINESS_CLIENT"
-                    )
+                        // ==========================================
+                        // WEBSOCKET
+                        // ==========================================
 
-                    .requestMatchers(
-                            HttpMethod.PUT,
-                            "/api/users/*/profile"
-                    ).authenticated()
+                        .requestMatchers("/ws/tracking/**")
+                        .permitAll()
 
-                    .requestMatchers(
-                            HttpMethod.PATCH,
-                            "/api/users/*/status"
-                    ).hasAnyRole(
-                            "LOGISTICS_OPERATOR",
-                            "ADMINISTRATOR"
-                    )
 
-                    // Tracking management
-                    .requestMatchers(
-                            "/api/tracking/**"
-                    ).hasAnyRole(
-                            "LOGISTICS_OPERATOR",
-                            "ADMINISTRATOR"
-                    )
+                        // ==========================================
+                        // DISTANCE
+                        // ==========================================
 
-                    // Route viewing: all authenticated users
-                    .requestMatchers(
-                            HttpMethod.GET,
-                            "/api/routes/**"
-                    ).authenticated()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/shipments/distance"
+                        )
+                        .permitAll()
 
-                    // Route creation: operator/admin only
-                    .requestMatchers(
-                            HttpMethod.POST,
-                            "/api/routes/**"
-                    ).hasAnyRole(
-                            "LOGISTICS_OPERATOR",
-                            "ADMINISTRATOR"
-                    )
 
-                    // Route updates: operator/admin only
-                    .requestMatchers(
-                            HttpMethod.PUT,
-                            "/api/routes/**"
-                    ).hasAnyRole(
-                            "LOGISTICS_OPERATOR",
-                            "ADMINISTRATOR"
-                    )
+                        // ==========================================
+                        // SHIPMENT CREATION
+                        // ==========================================
 
-                    .requestMatchers(
-                            HttpMethod.PATCH,
-                            "/api/routes/**"
-                    ).hasAnyRole(
-                            "LOGISTICS_OPERATOR",
-                            "ADMINISTRATOR"
-                    )
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/shipments"
+                        )
+                        .hasAnyRole(
+                                "CUSTOMER",
+                                "BUSINESS_CLIENT"
+                        )
 
-                    .requestMatchers(
-                            HttpMethod.POST,
-                            "/api/pod/**"
-                    ).hasRole(
-                            "LOGISTICS_OPERATOR"
-                    )
 
-                    .requestMatchers(
-                            "/api/analytics/**",
-                            "/api/reports/**"
-                    ).hasAnyRole(
-                            "BUSINESS_CLIENT",
-                            "ADMINISTRATOR"
-                    )
+                        // ==========================================
+                        // SHIPMENT READ
+                        // ==========================================
 
-                    .requestMatchers(
-                            HttpMethod.POST,
-                            "/api/eta/**"
-                    ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/shipments/**"
+                        )
+                        .authenticated()
 
-                    .requestMatchers(
-                            HttpMethod.GET,
-                            "/api/eta/**"
-                    ).authenticated()
 
-                    .requestMatchers(
-                            "/api/admin/**"
-                    ).hasRole(
-                            "ADMINISTRATOR"
-                    )
+                        // ==========================================
+                        // PROFILE
+                        // ==========================================
 
-                    .anyRequest().authenticated()
-            )
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/users/*/profile"
+                        )
+                        .authenticated()
 
-            .httpBasic(basic -> basic.disable())
 
-            .formLogin(form -> form.disable())
+                        // ==========================================
+                        // USER STATUS
+                        // ==========================================
 
-            .addFilterBefore(
-                    jwtAuthFilter,
-                    UsernamePasswordAuthenticationFilter.class
-            );
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/users/*/status"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "SUPPORT_AGENT",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // TRACKING HISTORY
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/tracking/**"
+                        )
+                        .authenticated()
+
+
+                        // ==========================================
+                        // TRACKING EVENTS
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/tracking/**"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // LIVE DRIVER LOCATION
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/routes/*/location"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // ROUTE READ
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/routes/**"
+                        )
+                        .authenticated()
+
+
+                        // ==========================================
+                        // ROUTE CREATE
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/routes/**"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // ROUTE UPDATE
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/routes/**"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "ADMINISTRATOR"
+                        )
+
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/routes/**"
+                        )
+                        .hasAnyRole(
+                                "LOGISTICS_OPERATOR",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // PACKAGES
+                        // ==========================================
+
+                        .requestMatchers(
+                                "/api/shipments/*/packages"
+                        )
+                        .authenticated()
+
+
+                        // ==========================================
+                        // PROOF OF DELIVERY
+                        // ==========================================
+
+                        // Operator submits POD
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/pod/**"
+                        )
+                        .hasRole("LOGISTICS_OPERATOR")
+
+
+                        // Support Agent/Admin verifies POD
+                        .requestMatchers(
+                                HttpMethod.PATCH,
+                                "/api/pod/*/verify"
+                        )
+                        .hasAnyRole(
+                                "SUPPORT_AGENT",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // Customer/Business Client/Support/Admin
+                        // can reach the endpoint.
+                        // Actual ownership authorization is checked
+                        // inside ProofOfDeliveryService.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/pod/**"
+                        )
+                        .authenticated()
+
+
+                        // ==========================================
+                        // ANALYTICS & REPORTS
+                        // ==========================================
+
+                        .requestMatchers(
+                                "/api/analytics/**",
+                                "/api/reports/**"
+                        )
+                        .hasAnyRole(
+                                "BUSINESS_CLIENT",
+                                "ADMINISTRATOR"
+                        )
+
+
+                        // ==========================================
+                        // ETA
+                        // ==========================================
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/eta/**"
+                        )
+                        .permitAll()
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/eta/**"
+                        )
+                        .authenticated()
+
+
+                        // ==========================================
+                        // ADMIN
+                        // ==========================================
+
+                        .requestMatchers("/api/admin/**")
+                        .hasRole("ADMINISTRATOR")
+
+
+                        // ==========================================
+                        // EVERYTHING ELSE
+                        // ==========================================
+
+                        .anyRequest()
+                        .authenticated()
+                )
+
+                .httpBasic(basic ->
+                        basic.disable()
+                )
+
+                .formLogin(form ->
+                        form.disable()
+                )
+
+                .addFilterBefore(
+                        jwtAuthFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                );
 
         return http.build();
     }
