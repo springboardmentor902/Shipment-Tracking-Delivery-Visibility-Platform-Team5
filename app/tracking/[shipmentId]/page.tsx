@@ -1,492 +1,229 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  GoogleMap,
-  Marker,
-  Polyline,
-  useJsApiLoader,
-} from "@react-google-maps/api";
-import { Client, type StompSubscription } from "@stomp/stompjs";
-import SockJS from "sockjs-client";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-type RouteInfo = {
+type RouteData = {
   id: number;
   shipmentId: number;
-  driverId?: number;
-  origin?: string;
-  destination?: string;
-  distanceKm?: number;
-  estimatedTimeMinutes?: number;
-  actualTimeMinutes?: number;
-  trafficCondition?: string;
-  createdAt?: string;
-  lastLatitude?: number;
-  lastLongitude?: number;
-  lastLocation?: string;
-  lastLocationAt?: string;
+  driverId: number | null;
+  origin: string | null;
+  destination: string | null;
+  waypoints: string | null;
+  distanceKm: number | null;
+  estimatedTimeMinutes: number | null;
+  actualTimeMinutes: number | null;
+  trafficCondition: string | null;
+  createdAt: string | null;
 };
 
-type LiveLocation = {
-  routeId: number;
-  shipmentId: number;
-  driverId?: number;
-  latitude: number;
-  longitude: number;
-  location?: string;
-  updatedAt: string;
-};
-
-type RoutePathPoint = {
-  lat: number;
-  lng: number;
-};
-
-const googleLibraries: ("routes")[] = ["routes"];
-
-const defaultCenter = {
-  lat: 13.0827,
-  lng: 80.2707,
+type ShipmentData = {
+  id: number;
+  trackingNumber?: string;
+  status?: string;
+  senderName?: string;
+  receiverName?: string;
+  pickupAddress?: string;
+  deliveryAddress?: string;
+  assignedOperatorId?: number | null;
 };
 
 export default function TrackingPage() {
-  const params = useParams<{ shipmentId: string }>();
+  const params = useParams();
   const router = useRouter();
 
-  const shipmentId = params?.shipmentId;
+  const shipmentId = params.shipmentId as string;
 
-  const [route, setRoute] = useState<RouteInfo | null>(null);
-
-  const [liveLocation, setLiveLocation] =
-    useState<LiveLocation | null>(null);
-
-  const [routePath, setRoutePath] =
-    useState<RoutePathPoint[]>([]);
-
-  const [mapInstance, setMapInstance] =
-    useState<google.maps.Map | null>(null);
-
-  const [connected, setConnected] = useState(false);
+  const [route, setRoute] = useState<RouteData | null>(null);
+  const [shipment, setShipment] =
+    useState<ShipmentData | null>(null);
 
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState("");
 
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8080";
+  const fetchTrackingData = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-  const googleMapsApiKey =
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
 
-  const {
-    isLoaded: mapLoaded,
-    loadError: mapLoadError,
-  } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey,
-    libraries: googleLibraries,
-  });
+      if (!shipmentId) {
+        setError("Invalid shipment ID");
+        return;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      };
+
+      const shipmentResponse = await fetch(
+        `http://localhost:8080/api/shipments/${shipmentId}`,
+        {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        }
+      );
+
+      if (shipmentResponse.status === 401) {
+        localStorage.removeItem("token");
+        router.replace("/login");
+        return;
+      }
+
+      if (shipmentResponse.ok) {
+        const shipmentText =
+          await shipmentResponse.text();
+
+        if (shipmentText) {
+          const shipmentData: ShipmentData =
+            JSON.parse(shipmentText);
+
+          setShipment(shipmentData);
+        }
+      }
+
+      const routeResponse = await fetch(
+        `http://localhost:8080/api/routes/${shipmentId}`,
+        {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        }
+      );
+
+      if (routeResponse.status === 401) {
+        localStorage.removeItem("token");
+        router.replace("/login");
+        return;
+      }
+
+      const routeText = await routeResponse.text();
+
+      if (!routeResponse.ok) {
+        setRoute(null);
+        setError(
+          routeText ||
+            `Unable to load route (${routeResponse.status})`
+        );
+        return;
+      }
+
+      if (!routeText) {
+        setRoute(null);
+        setError("No route found for this shipment");
+        return;
+      }
+
+      const routeData: RouteData | RouteData[] =
+        JSON.parse(routeText);
+
+      let latestRoute: RouteData | null = null;
+
+      if (Array.isArray(routeData)) {
+        if (routeData.length > 0) {
+          latestRoute = routeData[0];
+        }
+      } else if (
+        routeData &&
+        typeof routeData === "object"
+      ) {
+        latestRoute = routeData;
+      }
+
+      if (!latestRoute) {
+        setRoute(null);
+        setError("No route found for this shipment");
+        return;
+      }
+
+      setRoute(latestRoute);
+      setError("");
+      setLastUpdated(new Date().toLocaleString());
+    } catch (err) {
+      console.error("Tracking error:", err);
+      setError("Unable to connect to server");
+    } finally {
+      setLoading(false);
+    }
+  }, [shipmentId, router]);
 
   useEffect(() => {
     if (!shipmentId) {
       return;
     }
 
-    const token = localStorage.getItem("token");
+    fetchTrackingData();
 
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
-    let subscription: StompSubscription | undefined;
-
-    let disposed = false;
-
-    const loadRoute = async () => {
-      try {
-        setLoading(true);
-        setError("");
-
-        const response = await fetch(
-          `${apiBase}/api/routes/${shipmentId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            cache: "no-store",
-          }
-        );
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            localStorage.removeItem("token");
-            router.replace("/login");
-            return;
-          }
-
-          if (response.status === 403) {
-            throw new Error(
-              "You are not authorized to view this shipment route."
-            );
-          }
-
-          if (response.status === 404) {
-            throw new Error(
-              "Route not found for this shipment."
-            );
-          }
-
-          throw new Error(
-            `Route could not be loaded (${response.status})`
-          );
-        }
-
-        const data = await response.json();
-
-        const routeData = Array.isArray(data)
-          ? data[0]
-          : data;
-
-        if (!routeData) {
-          throw new Error(
-            "No route found for this shipment."
-          );
-        }
-
-        if (disposed) {
-          return;
-        }
-
-        setRoute(routeData);
-
-        if (
-          routeData.lastLatitude !== null &&
-          routeData.lastLatitude !== undefined &&
-          routeData.lastLongitude !== null &&
-          routeData.lastLongitude !== undefined
-        ) {
-          setLiveLocation({
-            routeId: routeData.id,
-            shipmentId: routeData.shipmentId,
-            driverId: routeData.driverId,
-            latitude: routeData.lastLatitude,
-            longitude: routeData.lastLongitude,
-            location: routeData.lastLocation,
-            updatedAt:
-              routeData.lastLocationAt ||
-              new Date().toISOString(),
-          });
-        }
-      } catch (err) {
-        if (!disposed) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Unable to load route."
-          );
-        }
-      } finally {
-        if (!disposed) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadRoute();
-
-    const client = new Client({
-      webSocketFactory: () =>
-        new SockJS(`${apiBase}/ws/tracking`),
-
-      connectHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-
-      reconnectDelay: 5000,
-    });
-
-    client.onConnect = () => {
-      if (disposed) {
-        return;
-      }
-
-      setConnected(true);
-
-      subscription = client.subscribe(
-        `/topic/shipments/${shipmentId}`,
-        (message) => {
-          try {
-            const update: LiveLocation =
-              JSON.parse(message.body);
-
-            if (!disposed) {
-              setLiveLocation(update);
-            }
-          } catch (err) {
-            console.error(
-              "Invalid live location message:",
-              err
-            );
-          }
-        }
-      );
-    };
-
-    client.onDisconnect = () => {
-      if (!disposed) {
-        setConnected(false);
-      }
-    };
-
-    client.onStompError = () => {
-      if (!disposed) {
-        setConnected(false);
-      }
-    };
-
-    client.onWebSocketError = () => {
-      if (!disposed) {
-        setConnected(false);
-      }
-    };
-
-    client.activate();
+    const interval = setInterval(() => {
+      fetchTrackingData();
+    }, 10000);
 
     return () => {
-      disposed = true;
-
-      subscription?.unsubscribe();
-
-      void client.deactivate();
+      clearInterval(interval);
     };
-  }, [shipmentId, router, apiBase]);
+  }, [shipmentId, fetchTrackingData]);
 
-  useEffect(() => {
-    if (
-      !mapLoaded ||
-      !route?.origin ||
-      !route?.destination
-    ) {
-      return;
+  const getStatusClass = (status: string) => {
+    const currentStatus =
+      shipment?.status?.toUpperCase() || "";
+
+    const targetStatus = status.toUpperCase();
+
+    if (currentStatus === targetStatus) {
+      return styles.statusActive;
     }
 
-    let cancelled = false;
+    return styles.statusInactive;
+  };
 
-    const calculateRoute = async () => {
-      try {
-       const routesLibrary = await google.maps.importLibrary("routes");
+  const formatDistance = () => {
+    if (
+      route?.distanceKm !== null &&
+      route?.distanceKm !== undefined
+    ) {
+      return `${route.distanceKm.toFixed(1)} km`;
+    }
 
-const Route = (routesLibrary as any).Route;
+    return "Not available";
+  };
 
-        const result = await Route.computeRoutes({
-          origin: route.origin,
-          destination: route.destination,
-          travelMode: "DRIVING",
-          fields: [
-            "path",
-            "distanceMeters",
-            "durationMillis",
-            "viewport",
-          ],
-        });
+  const formatTime = () => {
+    if (
+      route?.estimatedTimeMinutes !== null &&
+      route?.estimatedTimeMinutes !== undefined
+    ) {
+      const minutes = route.estimatedTimeMinutes;
 
-        if (cancelled) {
-          return;
-        }
-
-        const calculatedRoute =
-          result.routes?.[0];
-
-        if (!calculatedRoute?.path) {
-          setError(
-            "Google Maps could not calculate the route."
-          );
-          return;
-        }
-
-        const path =
-          calculatedRoute.path.map(
-            (point) => ({
-              lat:
-                typeof point.lat === "function"
-                  ? point.lat()
-                  : point.lat,
-
-              lng:
-                typeof point.lng === "function"
-                  ? point.lng()
-                  : point.lng,
-            })
-          );
-
-        if (!cancelled) {
-          setRoutePath(path);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error(
-            "Google Routes failed:",
-            err
-          );
-
-          setError(
-            "Google Maps route could not be loaded."
-          );
-        }
+      if (minutes < 60) {
+        return `${minutes} min`;
       }
-    };
 
-    calculateRoute();
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    mapLoaded,
-    route?.origin,
-    route?.destination,
-  ]);
+      if (remainingMinutes === 0) {
+        return `${hours} hr`;
+      }
 
-  /*
-   * Native Google Maps Polyline
-   *
-   * We are NOT removing the blue route.
-   * We are creating the same Polyline directly
-   * on the actual Google Maps instance.
-   */
-  useEffect(() => {
-    if (
-      !mapInstance ||
-      routePath.length === 0
-    ) {
-      return;
+      return `${hours} hr ${remainingMinutes} min`;
     }
 
-    const polyline =
-      new google.maps.Polyline({
-        path: routePath,
-        geodesic: true,
-        strokeColor: "#2563eb",
-        strokeOpacity: 0.9,
-        strokeWeight: 5,
-        map: mapInstance,
-      });
-
-    return () => {
-      polyline.setMap(null);
-    };
-  }, [mapInstance, routePath]);
-
-  const latitude =
-    liveLocation?.latitude ??
-    route?.lastLatitude;
-
-  const longitude =
-    liveLocation?.longitude ??
-    route?.lastLongitude;
-
-  const mapCenter = useMemo(() => {
-    if (
-      latitude !== undefined &&
-      longitude !== undefined
-    ) {
-      return {
-        lat: latitude,
-        lng: longitude,
-      };
-    }
-
-    if (routePath.length > 0) {
-      return routePath[0];
-    }
-
-    return defaultCenter;
-  }, [
-    latitude,
-    longitude,
-    routePath,
-  ]);
-
-  const directionsUrl = route
-    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(
-        route.origin || ""
-      )}&destination=${encodeURIComponent(
-        route.destination || ""
-      )}`
-    : "#";
+    return "Not available";
+  };
 
   if (loading) {
     return (
-      <main style={styles.center}>
-        <div style={styles.loadingBox}>
-          <h2>Loading shipment tracking...</h2>
-
-          <p>
-            Please wait while we load the route.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  if (!googleMapsApiKey) {
-    return (
-      <main style={styles.center}>
-        <div style={styles.loadingBox}>
-          <h2>Google Maps configuration missing</h2>
-
-          <p>
-            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not
-            configured.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  if (mapLoadError) {
-    return (
-      <main style={styles.center}>
-        <div style={styles.loadingBox}>
-          <h2>Google Maps could not be loaded</h2>
-
-          <p>
-            Please check your Google Maps API key
-            and configuration.
-          </p>
-
-          <button
-            style={styles.backButton}
-            onClick={() => router.back()}
-          >
-            Go Back
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  if (!route) {
-    return (
-      <main style={styles.center}>
-        <div style={styles.loadingBox}>
-          <h2>Shipment Tracking</h2>
-
-          <p>
-            {error || "Route not found."}
-          </p>
-
-          <button
-            style={styles.backButton}
-            onClick={() => router.back()}
-          >
-            Go Back
-          </button>
+      <main style={styles.page}>
+        <div style={styles.container}>
+          <h2 style={styles.loadingText}>
+            Loading Live Shipment Tracking...
+          </h2>
         </div>
       </main>
     );
@@ -494,10 +231,17 @@ const Route = (routesLibrary as any).Route;
 
   return (
     <main style={styles.page}>
-      <section style={styles.card}>
-
+      <div style={styles.container}>
         <div style={styles.header}>
           <div>
+            <button
+              type="button"
+              onClick={() => router.back()}
+              style={styles.backButton}
+            >
+              ← Back
+            </button>
+
             <h1 style={styles.title}>
               Live Shipment Tracking
             </h1>
@@ -507,310 +251,425 @@ const Route = (routesLibrary as any).Route;
             </p>
           </div>
 
-          <span
-            style={{
-              ...styles.status,
-
-              backgroundColor: connected
-                ? "#dcfce7"
-                : "#fee2e2",
-
-              color: connected
-                ? "#166534"
-                : "#991b1b",
-            }}
-          >
-            {connected
-              ? "Live Connected"
-              : "Disconnected"}
-          </span>
+          <div style={styles.liveBadge}>
+            ● Live Connected
+          </div>
         </div>
 
         {error && (
-          <p style={styles.error}>
-            {error}
-          </p>
+          <div style={styles.errorBox}>
+            <strong style={styles.errorTitle}>
+              Unable to load tracking data
+            </strong>
+
+            <p style={styles.errorText}>
+              {error}
+            </p>
+          </div>
         )}
 
-        <div style={styles.routeBox}>
+        {route && (
+          <>
+            <div style={styles.routeSummary}>
+              <div>
+                <strong style={styles.routeLabel}>
+                  Origin
+                </strong>
 
-          <div>
-            <strong style={styles.routeLabel}>
-              Origin
-            </strong>
+                <p style={styles.routeValue}>
+                  {route.origin || "Not available"}
+                </p>
+              </div>
 
-            <p style={styles.routeValue}>
-              {route.origin ||
-                "Not available"}
-            </p>
-          </div>
+              <div>
+                <strong style={styles.routeLabel}>
+                  Destination
+                </strong>
 
-          <div>
-            <strong style={styles.routeLabel}>
-              Destination
-            </strong>
+                <p style={styles.routeValue}>
+                  {route.destination ||
+                    "Not available"}
+                </p>
+              </div>
 
-            <p style={styles.routeValue}>
-              {route.destination ||
-                "Not available"}
-            </p>
-          </div>
+              <div>
+                <strong style={styles.routeLabel}>
+                  Distance
+                </strong>
 
-          <div>
-            <strong style={styles.routeLabel}>
-              Distance
-            </strong>
+                <p style={styles.routeValue}>
+                  {formatDistance()}
+                </p>
+              </div>
 
-            <p style={styles.routeValue}>
-              {route.distanceKm !== undefined &&
-              route.distanceKm !== null
-                ? `${route.distanceKm} km`
-                : "Not available"}
-            </p>
-          </div>
+              <div>
+                <strong style={styles.routeLabel}>
+                  Estimated Time
+                </strong>
 
-          <div>
-            <strong style={styles.routeLabel}>
-              Estimated Time
-            </strong>
+                <p style={styles.routeValue}>
+                  {formatTime()}
+                </p>
+              </div>
+            </div>
 
-            <p style={styles.routeValue}>
-              {route.estimatedTimeMinutes !==
-                undefined &&
-              route.estimatedTimeMinutes !== null
-                ? `${route.estimatedTimeMinutes} minutes`
-                : "Not available"}
-            </p>
-          </div>
+            <div style={styles.statusBox}>
+              <h2 style={styles.sectionTitle}>
+                Shipment Status
+              </h2>
 
-        </div>
+              <div style={styles.statusContainer}>
+                <div
+                  style={getStatusClass("CREATED")}
+                >
+                  <span style={styles.statusDot} />
+                  <span>Created</span>
+                </div>
 
-        <div style={styles.locationBox}>
-          <h2 style={styles.sectionTitle}>
-            Current Location
-          </h2>
+                <div
+                  style={getStatusClass("PICKED_UP")}
+                >
+                  <span style={styles.statusDot} />
+                  <span>Picked Up</span>
+                </div>
 
-          {liveLocation ? (
-            <>
-              <p>
-                <strong>Place:</strong>{" "}
-                {liveLocation.location ||
-                  "GPS location received"}
+                <div
+                  style={getStatusClass("IN_TRANSIT")}
+                >
+                  <span style={styles.statusDot} />
+                  <span>In Transit</span>
+                </div>
+
+                <div
+                  style={getStatusClass(
+                    "OUT_FOR_DELIVERY"
+                  )}
+                >
+                  <span style={styles.statusDot} />
+                  <span>Out for Delivery</span>
+                </div>
+
+                <div
+                  style={getStatusClass("DELIVERED")}
+                >
+                  <span style={styles.statusDot} />
+                  <span>Delivered</span>
+                </div>
+
+                <div
+                  style={getStatusClass(
+                    "FAILED_DELIVERY"
+                  )}
+                >
+                  <span style={styles.statusDot} />
+                  <span>Failed Delivery</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.locationBox}>
+              <h2 style={styles.sectionTitle}>
+                Current Location
+              </h2>
+
+              <p style={styles.locationText}>
+                Location:{" "}
+                {route.origin ||
+                  "Driver location is not available yet."}
               </p>
+            </div>
 
-              <p>
-                <strong>Latitude:</strong>{" "}
-                {liveLocation.latitude}
-              </p>
+            <div style={styles.mapBox}>
+              <iframe
+                title="Shipment Route Map"
+                width="100%"
+                height="400"
+                style={styles.map}
+                loading="lazy"
+                src={`https://www.google.com/maps?q=${encodeURIComponent(
+                  route.origin ||
+                    "Hyderabad, Telangana"
+                )}+to+${encodeURIComponent(
+                  route.destination ||
+                    "Pune, Maharashtra"
+                )}&output=embed`}
+              />
+            </div>
 
-              <p>
-                <strong>Longitude:</strong>{" "}
-                {liveLocation.longitude}
-              </p>
+            <div style={styles.updateBox}>
+              <strong style={styles.updateLabel}>
+                Last updated:
+              </strong>{" "}
+              <span style={styles.updateValue}>
+                {lastUpdated || "Just now"}
+              </span>
+            </div>
+          </>
+        )}
 
-              <p>
-                <strong>Last Updated:</strong>{" "}
-                {new Date(
-                  liveLocation.updatedAt
-                ).toLocaleString()}
-              </p>
-            </>
-          ) : (
-            <p>
-              Driver location is not available yet.
-            </p>
-          )}
-        </div>
-
-        {!mapLoaded ? (
-          <div style={styles.mapLoading}>
-            Loading Google Maps...
-          </div>
-        ) : (
-          <GoogleMap
-            mapContainerStyle={styles.map}
-            center={mapCenter}
-            zoom={
-              routePath.length > 0
-                ? 7
-                : 15
-            }
-            onLoad={(map) =>
-              setMapInstance(map)
-            }
-            onUnmount={() =>
-              setMapInstance(null)
-            }
-            options={{
-              streetViewControl: false,
-              mapTypeControl: false,
-              fullscreenControl: true,
-            }}
+        <div style={styles.actions}>
+          <button
+            type="button"
+            onClick={fetchTrackingData}
+            style={styles.primaryButton}
           >
-            {latitude !== undefined &&
-              longitude !== undefined && (
-                <Marker
-                  position={{
-                    lat: latitude,
-                    lng: longitude,
-                  }}
-                  title="Current driver location"
-                />
-              )}
-          </GoogleMap>
-        )}
+            Refresh Now
+          </button>
 
-        <a
-          href={directionsUrl}
-          target="_blank"
-          rel="noreferrer"
-          style={styles.link}
-        >
-          Open planned route in Google Maps
-        </a>
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/tracking")
+            }
+            style={styles.secondaryButton}
+          >
+            Track Another Shipment
+          </button>
 
-        <button
-          type="button"
-          onClick={() => router.back()}
-          style={styles.backButton}
-        >
-          ← Back
-        </button>
-
-      </section>
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/home")
+            }
+            style={styles.secondaryButton}
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
     </main>
   );
 }
 
-const styles = {
+const styles: Record<
+  string,
+  React.CSSProperties
+> = {
   page: {
     minHeight: "100vh",
-    padding: "40px 20px",
-    background: "#f3f6fb",
+    background: "#f4f7fb",
+    padding: "35px 20px",
+    boxSizing: "border-box",
   },
 
-  center: {
-    minHeight: "100vh",
-    display: "grid",
-    placeItems: "center",
-    background: "#f3f6fb",
-  },
-
-  loadingBox: {
-    background: "#ffffff",
-    padding: "35px",
-    borderRadius: "16px",
-    textAlign: "center" as const,
-    boxShadow:
-      "0 10px 30px rgba(15, 23, 42, 0.10)",
-  },
-
-  card: {
+  container: {
+    width: "100%",
     maxWidth: "1000px",
     margin: "0 auto",
-    padding: "28px",
-    borderRadius: "20px",
     background: "#ffffff",
+    padding: "40px",
+    borderRadius: "20px",
     boxShadow:
       "0 12px 35px rgba(15, 23, 42, 0.12)",
+    boxSizing: "border-box",
+  },
+
+  loadingText: {
+    color: "#111827",
+    margin: 0,
   },
 
   header: {
     display: "flex",
     justifyContent: "space-between",
-    gap: "20px",
     alignItems: "flex-start",
+    gap: "20px",
+    marginBottom: "30px",
+  },
+
+  backButton: {
+    border: "none",
+    background: "transparent",
+    color: "#2563eb",
+    fontSize: "15px",
+    fontWeight: 600,
+    cursor: "pointer",
+    padding: 0,
+    marginBottom: "12px",
   },
 
   title: {
     margin: 0,
-    color: "#0f172a",
+    color: "#111827",
+    fontSize: "32px",
+    fontWeight: 700,
   },
 
   subtitle: {
-    color: "#64748b",
+    color: "#475569",
+    marginTop: "8px",
+    marginBottom: 0,
+    fontSize: "16px",
   },
 
-  status: {
-    padding: "8px 12px",
-    borderRadius: "999px",
-    fontSize: "14px",
-    fontWeight: 700,
+  liveBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "10px 16px",
+    borderRadius: "20px",
+    fontWeight: 600,
+    whiteSpace: "nowrap",
   },
 
-  error: {
-    padding: "12px",
-    color: "#991b1b",
+  errorBox: {
     background: "#fee2e2",
-    borderRadius: "8px",
+    borderRadius: "10px",
+    padding: "18px",
+    marginBottom: "20px",
   },
 
-  routeBox: {
+  errorTitle: {
+    color: "#991b1b",
+    display: "block",
+    marginBottom: "6px",
+  },
+
+  errorText: {
+    color: "#991b1b",
+    margin: 0,
+  },
+
+  routeSummary: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: "16px",
-    margin: "24px 0",
-    padding: "18px",
-    borderRadius: "12px",
+      "repeat(4, minmax(0, 1fr))",
+    gap: "20px",
     background: "#f8fafc",
-    color: "#111827",
+    padding: "20px",
+    borderRadius: "14px",
+    marginBottom: "20px",
+    border: "1px solid #e5e7eb",
   },
 
   routeLabel: {
+    display: "block",
     color: "#111827",
-    fontWeight: 700,
+    fontSize: "15px",
+    marginBottom: "7px",
   },
 
   routeValue: {
-    color: "#374151",
-    marginTop: "6px",
+    color: "#334155",
+    margin: 0,
+    lineHeight: 1.5,
   },
 
-  locationBox: {
+  statusBox: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    padding: "24px",
+    borderRadius: "15px",
     marginBottom: "20px",
-    padding: "18px",
-    borderRadius: "12px",
-    background: "#eff6ff",
-    color: "#1e3a8a",
   },
 
   sectionTitle: {
+    color: "#111827",
     marginTop: 0,
+    marginBottom: "20px",
+    fontSize: "22px",
   },
 
-  mapLoading: {
+  statusContainer: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "14px 25px",
+  },
+
+  statusActive: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "#15803d",
+    fontWeight: 700,
+    fontSize: "15px",
+  },
+
+  statusInactive: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "#94a3b8",
+    fontWeight: 600,
+    fontSize: "15px",
+  },
+
+  statusDot: {
+    width: "10px",
+    height: "10px",
+    borderRadius: "50%",
+    background: "currentColor",
+    display: "inline-block",
+  },
+
+  locationBox: {
+    background: "#eff6ff",
+    padding: "25px",
+    borderRadius: "15px",
+    marginBottom: "20px",
+    border: "1px solid #dbeafe",
+  },
+
+  locationText: {
+    color: "#1e3a8a",
+    margin: 0,
+    fontSize: "16px",
+  },
+
+  mapBox: {
     width: "100%",
-    height: "420px",
-    borderRadius: "14px",
-    display: "grid",
-    placeItems: "center",
-    background: "#f1f5f9",
-    color: "#475569",
+    overflow: "hidden",
+    borderRadius: "15px",
+    marginBottom: "20px",
+    border: "1px solid #e5e7eb",
   },
 
   map: {
-    width: "100%",
-    height: "420px",
-    borderRadius: "14px",
-  },
-
-  link: {
-    display: "inline-block",
-    marginTop: "18px",
-    color: "#1d4ed8",
-    fontWeight: 700,
-  },
-
-  backButton: {
     display: "block",
-    marginTop: "20px",
-    padding: "10px 18px",
+    width: "100%",
+    border: 0,
+  },
+
+  updateBox: {
+    color: "#475569",
+    marginBottom: "25px",
+  },
+
+  updateLabel: {
+    color: "#111827",
+  },
+
+  updateValue: {
+    color: "#475569",
+  },
+
+  actions: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+
+  primaryButton: {
+    flex: 1,
+    minWidth: "180px",
+    padding: "14px",
     border: "none",
-    borderRadius: "8px",
+    borderRadius: "10px",
     background: "#2563eb",
     color: "#ffffff",
+    fontSize: "16px",
     fontWeight: 600,
+    cursor: "pointer",
+  },
+
+  secondaryButton: {
+    flex: 1,
+    minWidth: "180px",
+    padding: "14px",
+    border: "1px solid #d1d5db",
+    borderRadius: "10px",
+    background: "#ffffff",
+    color: "#1f2937",
+    fontSize: "16px",
     cursor: "pointer",
   },
 };
