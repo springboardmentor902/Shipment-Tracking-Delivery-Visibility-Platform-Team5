@@ -2,9 +2,9 @@ package com.shiptrack.shiptrack_pro.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -13,14 +13,10 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 @Service
 public class GoogleMapsService {
-
-    @Value("${google.maps.api-key}")
-    private String apiKey;
 
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper;
@@ -30,14 +26,30 @@ public class GoogleMapsService {
     }
 
     public String getDistance(String origin, String destination) {
+
         try {
             Coordinates originCoordinates = geocode(origin);
             Coordinates destinationCoordinates = geocode(destination);
 
-            if (originCoordinates == null
-                    || destinationCoordinates == null) {
-                return "{}";
+            if (originCoordinates == null) {
+                throw new RuntimeException(
+                        "Unable to geocode origin: " + origin
+                );
             }
+
+            if (destinationCoordinates == null) {
+                throw new RuntimeException(
+                        "Unable to geocode destination: " + destination
+                );
+            }
+
+            System.out.println(
+                    "Origin coordinates: " + originCoordinates
+            );
+
+            System.out.println(
+                    "Destination coordinates: " + destinationCoordinates
+            );
 
             return getDirections(
                     originCoordinates,
@@ -45,7 +57,14 @@ public class GoogleMapsService {
             );
 
         } catch (Exception e) {
-            return "{}";
+            System.err.println(
+                    "Route calculation error: " + e.getMessage()
+            );
+
+            throw new RuntimeException(
+                    "Unable to calculate route: " + e.getMessage(),
+                    e
+            );
         }
     }
 
@@ -54,43 +73,99 @@ public class GoogleMapsService {
             String destination) {
 
         try {
-            String response = getDistance(origin, destination);
+            String response = getDistance(
+                    origin,
+                    destination
+            );
 
-            JsonNode route = objectMapper
-                    .readTree(response)
-                    .path("routes")
-                    .path(0);
+            System.out.println(
+                    "OSRM response: " + response
+            );
 
-            if (route.isMissingNode()) {
-                return RouteDetails.empty();
+            JsonNode root =
+                    objectMapper.readTree(response);
+
+            String code =
+                    root.path("code").asText();
+
+            if (!"Ok".equalsIgnoreCase(code)) {
+                throw new RuntimeException(
+                        "OSRM route failed. Response code: " + code
+                );
             }
 
-            BigDecimal distanceKm = null;
-            Integer estimatedTimeMinutes = null;
+            JsonNode routes =
+                    root.path("routes");
 
-            if (route.has("distanceMeters")) {
-                distanceKm = BigDecimal
-                        .valueOf(
-                                route.get("distanceMeters").asDouble()
-                                        / 1000
-                        )
-                        .setScale(2, RoundingMode.HALF_UP);
+            if (!routes.isArray()
+                    || routes.isEmpty()) {
+
+                throw new RuntimeException(
+                        "No route returned by OSRM"
+                );
             }
 
-            if (route.has("duration")) {
-                String duration = route
-                        .get("duration")
-                        .asText()
-                        .replace("s", "");
+            JsonNode route =
+                    routes.get(0);
 
-                estimatedTimeMinutes = new BigDecimal(duration)
-                        .divide(
-                                BigDecimal.valueOf(60),
-                                0,
-                                RoundingMode.CEILING
-                        )
-                        .intValue();
+            if (!route.has("distance")
+                    || route.get("distance").isNull()) {
+
+                throw new RuntimeException(
+                        "OSRM did not return distance"
+                );
             }
+
+            if (!route.has("duration")
+                    || route.get("duration").isNull()) {
+
+                throw new RuntimeException(
+                        "OSRM did not return duration"
+                );
+            }
+
+            double distanceMeters =
+                    route.get("distance").asDouble();
+
+            double durationSeconds =
+                    route.get("duration").asDouble();
+
+            BigDecimal distanceKm =
+                    BigDecimal
+                            .valueOf(distanceMeters / 1000.0)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            Integer estimatedTimeMinutes =
+                    BigDecimal
+                            .valueOf(durationSeconds)
+                            .divide(
+                                    BigDecimal.valueOf(60),
+                                    0,
+                                    RoundingMode.CEILING
+                            )
+                            .intValue();
+
+            System.out.println(
+                    "Calculated route: "
+                            + origin
+                            + " -> "
+                            + destination
+            );
+
+            System.out.println(
+                    "Distance: "
+                            + distanceKm
+                            + " km"
+            );
+
+            System.out.println(
+                    "Estimated time: "
+                            + estimatedTimeMinutes
+                            + " minutes"
+            );
 
             return new RouteDetails(
                     distanceKm,
@@ -98,58 +173,148 @@ public class GoogleMapsService {
             );
 
         } catch (Exception e) {
-            // Google API fail ayina route save avvali
-            return RouteDetails.empty();
+
+            System.err.println(
+                    "Route calculation failed: "
+                            + e.getMessage()
+            );
+
+            throw new RuntimeException(
+                    "Route calculation failed: "
+                            + e.getMessage(),
+                    e
+            );
         }
     }
 
     private Coordinates geocode(String address) {
 
-    	String url = UriComponentsBuilder
-    	        .newInstance()
-    	        .scheme("https")
-    	        .host("maps.googleapis.com")
-    	        .path("/maps/api/geocode/json")
-    	        .queryParam("address", address)
-    	        .queryParam("key", apiKey)
-    	        .build()
-    	        .encode()
-    	        .toUriString();
-
-        ResponseEntity<String> response =
-                restTemplate.getForEntity(url, String.class);
-
         try {
-            JsonNode root =
-                    objectMapper.readTree(response.getBody());
 
-            String status = root
-                    .path("status")
-                    .asText();
+            String searchAddress = address;
 
-            if (!"OK".equals(status)
-                    || root.path("results").isEmpty()) {
+            if (!address.toLowerCase().contains("india")) {
+                searchAddress = address + ", India";
+            }
+
+            String url =
+                    UriComponentsBuilder
+                            .newInstance()
+                            .scheme("https")
+                            .host("nominatim.openstreetmap.org")
+                            .path("/search")
+                            .queryParam("q", searchAddress)
+                            .queryParam("format", "json")
+                            .queryParam("limit", "1")
+                            .queryParam("countrycodes", "in")
+                            .queryParam("addressdetails", "1")
+                            .build()
+                            .toUriString();
+
+            HttpHeaders headers =
+                    new HttpHeaders();
+
+            headers.set(
+                    HttpHeaders.USER_AGENT,
+                    "ShipTrack/1.0 (shipment tracking application)"
+            );
+
+            headers.setAccept(
+                    List.of(MediaType.APPLICATION_JSON)
+            );
+
+            HttpEntity<Void> request =
+                    new HttpEntity<>(headers);
+
+            System.out.println(
+                    "Nominatim URL: " + url
+            );
+
+            ResponseEntity<String> response =
+                    restTemplate.exchange(
+                            url,
+                            HttpMethod.GET,
+                            request,
+                            String.class
+                    );
+
+            System.out.println(
+                    "Nominatim response: "
+                            + response.getBody()
+            );
+
+            JsonNode results =
+                    objectMapper.readTree(
+                            response.getBody()
+                    );
+
+            if (!results.isArray()
+                    || results.isEmpty()) {
+
+                System.err.println(
+                        "No location found for: "
+                                + searchAddress
+                );
+
                 return null;
             }
 
-            JsonNode location = root
-                    .path("results")
-                    .path(0)
-                    .path("geometry")
-                    .path("location");
+            JsonNode firstResult =
+                    results.get(0);
 
-            if (!location.has("lat")
-                    || !location.has("lng")) {
-                return null;
+            String latitudeText =
+                    firstResult
+                            .path("lat")
+                            .asText();
+
+            String longitudeText =
+                    firstResult
+                            .path("lon")
+                            .asText();
+
+            if (latitudeText.isBlank()
+                    || longitudeText.isBlank()) {
+
+                throw new RuntimeException(
+                        "Invalid coordinates returned for: "
+                                + searchAddress
+                );
             }
+
+            double latitude =
+                    Double.parseDouble(latitudeText);
+
+            double longitude =
+                    Double.parseDouble(longitudeText);
+
+            System.out.println(
+                    "Geocoded "
+                            + searchAddress
+                            + " -> "
+                            + latitude
+                            + ", "
+                            + longitude
+            );
 
             return new Coordinates(
-                    location.get("lat").asDouble(),
-                    location.get("lng").asDouble()
+                    latitude,
+                    longitude
             );
 
         } catch (Exception e) {
-            return null;
+
+            System.err.println(
+                    "Geocoding error for "
+                            + address
+                            + ": "
+                            + e.getMessage()
+            );
+
+            throw new RuntimeException(
+                    "Geocoding failed for: "
+                            + address,
+                    e
+            );
         }
     }
 
@@ -157,56 +322,71 @@ public class GoogleMapsService {
             Coordinates origin,
             Coordinates destination) {
 
-        String url =
-                "https://routes.googleapis.com/directions/v2:computeRoutes";
+        try {
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Goog-Api-Key", apiKey);
-        headers.set(
-                "X-Goog-FieldMask",
-                "routes.distanceMeters,routes.duration"
-        );
+            String coordinates =
+                    origin.longitude()
+                            + ","
+                            + origin.latitude()
+                            + ";"
+                            + destination.longitude()
+                            + ","
+                            + destination.latitude();
 
-        Map<String, Object> originLocation = Map.of(
-                "location",
-                Map.of(
-                        "latLng",
-                        Map.of(
-                                "latitude", origin.latitude(),
-                                "longitude", origin.longitude()
-                        )
-                )
-        );
+            String url =
+                    UriComponentsBuilder
+                            .newInstance()
+                            .scheme("https")
+                            .host("router.project-osrm.org")
+                            .path(
+                                    "/route/v1/driving/"
+                                            + coordinates
+                            )
+                            .queryParam(
+                                    "overview",
+                                    "false"
+                            )
+                            .build()
+                            .toUriString();
 
-        Map<String, Object> destinationLocation = Map.of(
-                "location",
-                Map.of(
-                        "latLng",
-                        Map.of(
-                                "latitude", destination.latitude(),
-                                "longitude", destination.longitude()
-                        )
-                )
-        );
+            HttpHeaders headers =
+                    new HttpHeaders();
 
-        Map<String, Object> requestBody = new HashMap<>();
+            headers.set(
+                    HttpHeaders.USER_AGENT,
+                    "ShipTrack/1.0"
+            );
 
-        requestBody.put("origin", originLocation);
-        requestBody.put("destination", destinationLocation);
-        requestBody.put("travelMode", "DRIVE");
+            headers.setAccept(
+                    List.of(MediaType.APPLICATION_JSON)
+            );
 
-        HttpEntity<Map<String, Object>> request =
-                new HttpEntity<>(requestBody, headers);
+            HttpEntity<Void> request =
+                    new HttpEntity<>(headers);
 
-        ResponseEntity<String> response =
-                restTemplate.postForEntity(
-                        url,
-                        request,
-                        String.class
-                );
+            ResponseEntity<String> response =
+                    restTemplate.exchange(
+                            url,
+                            HttpMethod.GET,
+                            request,
+                            String.class
+                    );
 
-        return response.getBody();
+            return response.getBody();
+
+        } catch (Exception e) {
+
+            System.err.println(
+                    "OSRM routing error: "
+                            + e.getMessage()
+            );
+
+            throw new RuntimeException(
+                    "OSRM routing failed: "
+                            + e.getMessage(),
+                    e
+            );
+        }
     }
 
     private record Coordinates(
@@ -219,8 +399,5 @@ public class GoogleMapsService {
             BigDecimal distanceKm,
             Integer estimatedTimeMinutes
     ) {
-        public static RouteDetails empty() {
-            return new RouteDetails(null, null);
-        }
     }
 }
