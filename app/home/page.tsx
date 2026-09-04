@@ -812,9 +812,54 @@ export default function HomePage() {
           </button>
 
           {/* ========================= */}
-          {/* 5. COMPLETE DELIVERY */}
+          {/* 5. ANALYTICS DASHBOARD */}
+          {/* CUSTOMER / BUSINESS / ADMIN */}
           {/* ========================= */}
 
+          {(
+            displayRole.toUpperCase() === "CUSTOMER" ||
+            displayRole.toUpperCase() === "BUSINESS_CLIENT" ||
+            displayRole.toUpperCase() === "ADMINISTRATOR"
+          ) && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() => router.push("/analytics")}
+            >
+              <span>📊</span>
+
+              <h2>Analytics Dashboard</h2>
+
+              <p>
+                View shipment, delivery and operational
+                insights for your role.
+              </p>
+            </button>
+          )}
+
+          {/* Reports & Export */}
+          {(
+            displayRole.toUpperCase() === "CUSTOMER" ||
+            displayRole.toUpperCase() === "BUSINESS_CLIENT" ||
+            displayRole.toUpperCase() === "ADMINISTRATOR"
+          ) && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() => router.push("/reports")}
+            >
+              <span>📄</span>
+
+              <h2>Reports & Export</h2>
+
+              <p>
+                Generate and download shipment, delivery,
+                route and delay reports.
+              </p>
+            </button>
+          )}
+
+          {/* Complete Delivery */}
           <button
             type="button"
             className="dashboard-card"
