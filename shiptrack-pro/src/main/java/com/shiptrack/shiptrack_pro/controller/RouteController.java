@@ -22,13 +22,19 @@ public class RouteController {
             @RequestBody Route route,
             Authentication authentication) {
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(routeService.createRoute(
-                        route,
-                        authentication.getName()
-                ));
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                        routeService.createRoute(
+                                route,
+                                authentication.getName()
+                        )
+                );
     }
 
+    /**
+     * Returns ONLY the current route.
+     */
     @GetMapping("/{shipmentId}")
     public ResponseEntity<List<Route>> getRoutes(
             @PathVariable Long shipmentId,
@@ -36,6 +42,22 @@ public class RouteController {
 
         return ResponseEntity.ok(
                 routeService.getRoutesByShipmentId(
+                        shipmentId,
+                        authentication.getName()
+                )
+        );
+    }
+
+    /**
+     * Returns complete route history.
+     */
+    @GetMapping("/{shipmentId}/history")
+    public ResponseEntity<List<Route>> getRouteHistory(
+            @PathVariable Long shipmentId,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                routeService.getRouteHistory(
                         shipmentId,
                         authentication.getName()
                 )

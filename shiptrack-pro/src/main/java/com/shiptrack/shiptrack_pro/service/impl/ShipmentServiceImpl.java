@@ -49,6 +49,11 @@ public class ShipmentServiceImpl
         // Set authenticated user as shipment creator
         shipment.setCreatedBy(user.getId());
 
+        // Associate Business Client shipments with the business account
+        if ("BUSINESS_CLIENT".equalsIgnoreCase(user.getRole())) {
+            shipment.setBusinessId(user.getId());
+        }
+
         // Automatically assign the first available
         // Logistics Operator
         User operator = userRepository

@@ -22,7 +22,6 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -295,6 +294,24 @@ public class AnalyticsServiceImpl
         List<RoutePerformance> routes =
                 buildRoutePerformance(shipments);
 
+        /*
+         * ========================================================
+         * ROUTE MANAGEMENT ANALYTICS
+         * ========================================================
+         */
+
+        double averageRouteDistanceKm =
+                calculateAverageRouteDistance(shipments);
+
+        double timeEstimateAccuracy =
+                calculateTimeEstimateAccuracy(shipments);
+
+        RoutePerformance bestRoute =
+                findBestRoute(routes);
+
+        RoutePerformance worstRoute =
+                findWorstRoute(routes);
+
         SystemMonitoring monitoring =
                 buildSystemMonitoring();
 
@@ -338,6 +355,14 @@ public class AnalyticsServiceImpl
                         statusBreakdown
                 )
                 .routePerformance(routes)
+                .averageRouteDistanceKm(
+                        averageRouteDistanceKm
+                )
+                .timeEstimateAccuracy(
+                        timeEstimateAccuracy
+                )
+                .bestRoute(bestRoute)
+                .worstRoute(worstRoute)
                 .systemMonitoring(monitoring)
                 .reports(reports)
                 .build();
@@ -610,6 +635,10 @@ public class AnalyticsServiceImpl
                 continue;
             }
 
+            /*
+             * First route is the latest/current route
+             * because repository sorts by createdAt DESC.
+             */
             Route route = routes.get(0);
 
             String performanceStatus =
@@ -672,6 +701,227 @@ public class AnalyticsServiceImpl
         }
 
         return "DELAYED";
+    }
+
+
+    // ============================================================
+    // ROUTE MANAGEMENT ANALYTICS
+    // ============================================================
+
+    /**
+     * Calculates the average distance of the latest
+     * route for every shipment that has a route.
+     */
+    private double calculateAverageRouteDistance(
+            List<Shipment> shipments) {
+
+        List<Double> distances =
+                new ArrayList<>();
+
+        for (Shipment shipment : shipments) {
+
+            List<Route> routes =
+                    routeRepository
+                            .findAllByShipmentIdOrderByCreatedAtDesc(
+                                    shipment.getId()
+                            );
+
+            if (routes.isEmpty()) {
+                continue;
+            }
+
+            Route route = routes.get(0);
+
+            if (route.getDistanceKm() != null) {
+
+                distances.add(
+                        route.getDistanceKm()
+                                .doubleValue()
+                );
+            }
+        }
+
+        if (distances.isEmpty()) {
+            return 0.0;
+        }
+
+        double average =
+                distances.stream()
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(0.0);
+
+        return round(average);
+    }
+
+
+    /**
+     * Calculates time-estimate accuracy based on routes
+     * where both estimated and actual travel time exist.
+     *
+     * Accuracy formula:
+     *
+     * 100 - average percentage error
+     *
+     * The result is limited between 0 and 100.
+     */
+    private double calculateTimeEstimateAccuracy(
+            List<Shipment> shipments) {
+
+        List<Double> percentageErrors =
+                new ArrayList<>();
+
+        for (Shipment shipment : shipments) {
+
+            List<Route> routes =
+                    routeRepository
+                            .findAllByShipmentIdOrderByCreatedAtDesc(
+                                    shipment.getId()
+                            );
+
+            if (routes.isEmpty()) {
+                continue;
+            }
+
+            Route route = routes.get(0);
+
+            Integer estimated =
+                    route.getEstimatedTimeMinutes();
+
+            Integer actual =
+                    route.getActualTimeMinutes();
+
+            if (estimated == null
+                    || actual == null
+                    || estimated <= 0) {
+
+                continue;
+            }
+
+            double error =
+                    Math.abs(
+                            actual - estimated
+                    ) * 100.0 / estimated;
+
+            percentageErrors.add(error);
+        }
+
+        if (percentageErrors.isEmpty()) {
+            return 0.0;
+        }
+
+        double averageError =
+                percentageErrors.stream()
+                        .mapToDouble(
+                                Double::doubleValue
+                        )
+                        .average()
+                        .orElse(0.0);
+
+        double accuracy =
+                100.0 - averageError;
+
+        if (accuracy < 0.0) {
+            accuracy = 0.0;
+        }
+
+        if (accuracy > 100.0) {
+            accuracy = 100.0;
+        }
+
+        return round(accuracy);
+    }
+
+
+    /**
+     * Finds the best route from routes that have usable
+     * time information.
+     *
+     * Actual travel time is preferred. Estimated time is
+     * used only when actual time is unavailable.
+     *
+     * Routes with both actual and estimated time missing
+     * are excluded.
+     */
+    private RoutePerformance findBestRoute(
+            List<RoutePerformance> routes) {
+
+        if (routes == null || routes.isEmpty()) {
+            return null;
+        }
+
+        return routes.stream()
+                .filter(Objects::nonNull)
+                .filter(route ->
+                        route.getActualTimeMinutes() != null
+                                || route.getEstimatedTimeMinutes() != null
+                )
+                .min(
+                        Comparator.comparingDouble(
+                                this::routeComparisonTime
+                        )
+                )
+                .orElse(null);
+    }
+
+
+    /**
+     * Finds the worst route from routes that have usable
+     * time information.
+     *
+     * Actual travel time is preferred. Estimated time is
+     * used only when actual time is unavailable.
+     *
+     * Routes with both actual and estimated time missing
+     * are excluded.
+     */
+    private RoutePerformance findWorstRoute(
+            List<RoutePerformance> routes) {
+
+        if (routes == null || routes.isEmpty()) {
+            return null;
+        }
+
+        return routes.stream()
+                .filter(Objects::nonNull)
+                .filter(route ->
+                        route.getActualTimeMinutes() != null
+                                || route.getEstimatedTimeMinutes() != null
+                )
+                .max(
+                        Comparator.comparingDouble(
+                                this::routeComparisonTime
+                        )
+                )
+                .orElse(null);
+    }
+
+
+    /**
+     * Returns the time used to compare routes.
+     *
+     * Actual time is preferred because it represents
+     * real route performance.
+     *
+     * Estimated time is used as fallback when actual
+     * travel time is not available.
+     */
+    private double routeComparisonTime(
+            RoutePerformance route) {
+
+        if (route.getActualTimeMinutes() != null) {
+
+            return route.getActualTimeMinutes()
+                    .doubleValue();
+        }
+
+        if (route.getEstimatedTimeMinutes() != null) {
+
+            return route.getEstimatedTimeMinutes()
+                    .doubleValue();
+        }
+
+        return Double.MAX_VALUE;
     }
 
 

@@ -40,6 +40,17 @@ public class AdminAnalyticsResponse {
 
     private List<RoutePerformance> routePerformance;
 
+    /*
+     * Route Management Analytics
+     */
+    private Double averageRouteDistanceKm;
+
+    private Double timeEstimateAccuracy;
+
+    private RoutePerformance bestRoute;
+
+    private RoutePerformance worstRoute;
+
     private SystemMonitoring systemMonitoring;
 
     private ReportsSummary reports;

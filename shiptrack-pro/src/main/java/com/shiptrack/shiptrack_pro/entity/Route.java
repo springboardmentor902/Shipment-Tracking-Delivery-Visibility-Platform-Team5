@@ -47,7 +47,11 @@ public class Route {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-    
+
+    @Column(name = "is_current", nullable = false)
+    @Builder.Default
+    private Boolean isCurrent = true;
+
     @Column(name = "last_latitude", precision = 10, scale = 7)
     private BigDecimal lastLatitude;
 

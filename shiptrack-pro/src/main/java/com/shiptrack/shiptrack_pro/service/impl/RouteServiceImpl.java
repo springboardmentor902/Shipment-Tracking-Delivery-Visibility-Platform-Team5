@@ -1,12 +1,13 @@
 package com.shiptrack.shiptrack_pro.service.impl;
 
+import com.shiptrack.shiptrack_pro.dto.RouteAlternative;
 import com.shiptrack.shiptrack_pro.entity.Route;
 import com.shiptrack.shiptrack_pro.entity.Shipment;
 import com.shiptrack.shiptrack_pro.entity.User;
 import com.shiptrack.shiptrack_pro.repository.RouteRepository;
 import com.shiptrack.shiptrack_pro.repository.ShipmentRepository;
 import com.shiptrack.shiptrack_pro.repository.UserRepository;
-import com.shiptrack.shiptrack_pro.service.GoogleMapsService;
+import com.shiptrack.shiptrack_pro.service.RouteOptimizationService;
 import com.shiptrack.shiptrack_pro.service.RouteService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,24 +22,28 @@ public class RouteServiceImpl implements RouteService {
     private final RouteRepository routeRepository;
     private final ShipmentRepository shipmentRepository;
     private final UserRepository userRepository;
-    private final GoogleMapsService googleMapsService;
+    private final RouteOptimizationService routeOptimizationService;
 
     public RouteServiceImpl(
             RouteRepository routeRepository,
             ShipmentRepository shipmentRepository,
             UserRepository userRepository,
-            GoogleMapsService googleMapsService) {
+            RouteOptimizationService routeOptimizationService) {
 
         this.routeRepository = routeRepository;
         this.shipmentRepository = shipmentRepository;
         this.userRepository = userRepository;
-        this.googleMapsService = googleMapsService;
+        this.routeOptimizationService =
+                routeOptimizationService;
     }
 
     @Override
-    public Route createRoute(Route route, String email) {
+    public Route createRoute(
+            Route route,
+            String email) {
 
         User user = getUser(email);
+
         requireRouteManager(user);
 
         if (route.getShipmentId() == null) {
@@ -52,29 +57,46 @@ public class RouteServiceImpl implements RouteService {
 
         if (isBlank(route.getOrigin())
                 || isBlank(route.getDestination())) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Origin and destination are required"
             );
         }
 
-        GoogleMapsService.RouteDetails details =
-                googleMapsService.calculateRoute(
+        RouteAlternative optimizedRoute =
+                routeOptimizationService.selectBestRoute(
                         route.getOrigin(),
                         route.getDestination()
                 );
 
-        route.setId(null);
-        route.setDistanceKm(details.distanceKm());
-        route.setEstimatedTimeMinutes(
-                details.estimatedTimeMinutes()
+        markPreviousRouteAsNotCurrent(
+                route.getShipmentId()
         );
+
+        route.setId(null);
+
+        route.setDistanceKm(
+                optimizedRoute.getDistanceKm()
+        );
+
+        route.setEstimatedTimeMinutes(
+                optimizedRoute
+                        .getTrafficAdjustedDurationMinutes()
+        );
+
+        route.setTrafficCondition(
+                optimizedRoute.getSelectionReason()
+        );
+
+        route.setIsCurrent(true);
 
         return routeRepository.save(route);
     }
-    
+
     @Override
-    public Route createRouteFromShipment(Shipment shipment) {
+    public Route createRouteFromShipment(
+            Shipment shipment) {
 
         if (shipment.getId() == null) {
             throw new ResponseStatusException(
@@ -92,22 +114,42 @@ public class RouteServiceImpl implements RouteService {
             );
         }
 
-        GoogleMapsService.RouteDetails details =
-                googleMapsService.calculateRoute(
+        RouteAlternative optimizedRoute =
+                routeOptimizationService.selectBestRoute(
                         shipment.getPickupAddress(),
                         shipment.getDeliveryAddress()
                 );
 
+        markPreviousRouteAsNotCurrent(
+                shipment.getId()
+        );
+
         Route route = new Route();
 
         route.setShipmentId(shipment.getId());
-        route.setOrigin(shipment.getPickupAddress());
-        route.setDestination(shipment.getDeliveryAddress());
 
-        route.setDistanceKm(details.distanceKm());
-        route.setEstimatedTimeMinutes(
-                details.estimatedTimeMinutes()
+        route.setOrigin(
+                shipment.getPickupAddress()
         );
+
+        route.setDestination(
+                shipment.getDeliveryAddress()
+        );
+
+        route.setDistanceKm(
+                optimizedRoute.getDistanceKm()
+        );
+
+        route.setEstimatedTimeMinutes(
+                optimizedRoute
+                        .getTrafficAdjustedDurationMinutes()
+        );
+
+        route.setTrafficCondition(
+                optimizedRoute.getSelectionReason()
+        );
+
+        route.setIsCurrent(true);
 
         return routeRepository.save(route);
     }
@@ -118,12 +160,47 @@ public class RouteServiceImpl implements RouteService {
             String email) {
 
         User user = getUser(email);
-        Shipment shipment = getShipment(shipmentId);
 
-        checkViewAccess(user, shipment);
+        Shipment shipment =
+                getShipment(shipmentId);
+
+        checkViewAccess(
+                user,
+                shipment
+        );
+
+        Route currentRoute =
+                routeRepository
+                        .findByShipmentIdAndIsCurrentTrue(
+                                shipmentId
+                        )
+                        .orElse(null);
+
+        if (currentRoute == null) {
+            return List.of();
+        }
+
+        return List.of(currentRoute);
+    }
+
+    public List<Route> getRouteHistory(
+            Long shipmentId,
+            String email) {
+
+        User user = getUser(email);
+
+        Shipment shipment =
+                getShipment(shipmentId);
+
+        checkViewAccess(
+                user,
+                shipment
+        );
 
         return routeRepository
-                .findAllByShipmentIdOrderByCreatedAtDesc(shipmentId);
+                .findAllByShipmentIdOrderByCreatedAtDesc(
+                        shipmentId
+                );
     }
 
     @Override
@@ -133,13 +210,17 @@ public class RouteServiceImpl implements RouteService {
             String email) {
 
         User user = getUser(email);
+
         requireRouteManager(user);
 
-        Route existingRoute = routeRepository.findById(routeId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Route not found"
-                ));
+        Route existingRoute =
+                routeRepository.findById(routeId)
+                        .orElseThrow(
+                                () -> new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Route not found"
+                                )
+                        );
 
         if (updatedRoute.getShipmentId() != null
                 && !Objects.equals(
@@ -159,7 +240,10 @@ public class RouteServiceImpl implements RouteService {
                         existingRoute.getOrigin(),
                         updatedRoute.getOrigin())) {
 
-            existingRoute.setOrigin(updatedRoute.getOrigin());
+            existingRoute.setOrigin(
+                    updatedRoute.getOrigin()
+            );
+
             locationChanged = true;
         }
 
@@ -171,6 +255,7 @@ public class RouteServiceImpl implements RouteService {
             existingRoute.setDestination(
                     updatedRoute.getDestination()
             );
+
             locationChanged = true;
         }
 
@@ -202,46 +287,78 @@ public class RouteServiceImpl implements RouteService {
                 || existingRoute.getDistanceKm() == null
                 || existingRoute.getEstimatedTimeMinutes() == null) {
 
-            GoogleMapsService.RouteDetails details =
-                    googleMapsService.calculateRoute(
+            RouteAlternative optimizedRoute =
+                    routeOptimizationService.selectBestRoute(
                             existingRoute.getOrigin(),
                             existingRoute.getDestination()
                     );
 
             existingRoute.setDistanceKm(
-                    details.distanceKm()
+                    optimizedRoute.getDistanceKm()
             );
 
             existingRoute.setEstimatedTimeMinutes(
-                    details.estimatedTimeMinutes()
+                    optimizedRoute
+                            .getTrafficAdjustedDurationMinutes()
+            );
+
+            existingRoute.setTrafficCondition(
+                    optimizedRoute.getSelectionReason()
             );
         }
 
         return routeRepository.save(existingRoute);
     }
 
+    private void markPreviousRouteAsNotCurrent(
+            Long shipmentId) {
+
+        routeRepository
+                .findByShipmentIdAndIsCurrentTrue(
+                        shipmentId
+                )
+                .ifPresent(currentRoute -> {
+
+                    currentRoute.setIsCurrent(false);
+
+                    routeRepository.save(currentRoute);
+                });
+    }
+
     private User getUser(String email) {
 
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "User not found"
-                ));
+                .orElseThrow(
+                        () -> new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "User not found"
+                        )
+                );
     }
 
-    private Shipment getShipment(Long shipmentId) {
+    private Shipment getShipment(
+            Long shipmentId) {
 
         return shipmentRepository.findById(shipmentId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Shipment not found"
-                ));
+                .orElseThrow(
+                        () -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Shipment not found"
+                        )
+                );
     }
 
-    private void requireRouteManager(User user) {
+    private void requireRouteManager(
+            User user) {
 
-        if (!hasRole(user, "LOGISTICS_OPERATOR")
-                && !hasRole(user, "ADMINISTRATOR")) {
+        if (!hasRole(
+                user,
+                "LOGISTICS_OPERATOR"
+        )
+                && !hasRole(
+                user,
+                "ADMINISTRATOR"
+        )) {
 
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
@@ -254,35 +371,44 @@ public class RouteServiceImpl implements RouteService {
             User user,
             Shipment shipment) {
 
-        // Admin
-        if (hasRole(user, "ADMINISTRATOR")) {
+        if (hasRole(
+                user,
+                "ADMINISTRATOR"
+        )) {
             return;
         }
 
-        // Support agent
-        if (hasRole(user, "SUPPORT_AGENT")) {
+        if (hasRole(
+                user,
+                "SUPPORT_AGENT"
+        )) {
             return;
         }
 
-        // Logistics operator
-        // Operators need access for live shipment monitoring.
-        if (hasRole(user, "LOGISTICS_OPERATOR")) {
+        if (hasRole(
+                user,
+                "LOGISTICS_OPERATOR"
+        )) {
             return;
         }
 
-        // Customer
-        if (hasRole(user, "CUSTOMER")
+        if (hasRole(
+                user,
+                "CUSTOMER"
+        )
                 && Objects.equals(
-                        shipment.getCreatedBy(),
-                        user.getId())) {
+                shipment.getCreatedBy(),
+                user.getId())) {
             return;
         }
 
-        // Business client
-        if (hasRole(user, "BUSINESS_CLIENT")
+        if (hasRole(
+                user,
+                "BUSINESS_CLIENT"
+        )
                 && Objects.equals(
-                        shipment.getCreatedBy(),
-                        user.getId())) {
+                shipment.getCreatedBy(),
+                user.getId())) {
             return;
         }
 
@@ -298,11 +424,12 @@ public class RouteServiceImpl implements RouteService {
 
         return user.getRole() != null
                 && role.equalsIgnoreCase(
-                        user.getRole()
-                );
+                user.getRole()
+        );
     }
 
-    private boolean isBlank(String value) {
+    private boolean isBlank(
+            String value) {
 
         return value == null
                 || value.trim().isEmpty();

@@ -7,11 +7,28 @@ import java.util.List;
 
 public interface RouteService {
 
-    Route createRoute(Route route, String email);
+    Route createRoute(
+            Route route,
+            String email
+    );
 
-    Route createRouteFromShipment(Shipment shipment);
+    Route createRouteFromShipment(
+            Shipment shipment
+    );
 
-    List<Route> getRoutesByShipmentId(Long shipmentId, String email);
+    List<Route> getRoutesByShipmentId(
+            Long shipmentId,
+            String email
+    );
 
-    Route updateRoute(Long routeId, Route updatedRoute, String email);
+    List<Route> getRouteHistory(
+            Long shipmentId,
+            String email
+    );
+
+    Route updateRoute(
+            Long routeId,
+            Route updatedRoute,
+            String email
+    );
 }

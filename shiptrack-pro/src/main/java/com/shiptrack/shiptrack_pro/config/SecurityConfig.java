@@ -1,8 +1,7 @@
 package com.shiptrack.shiptrack_pro.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shiptrack.shiptrack_pro.security.JwtAuthFilter;
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,7 +17,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shiptrack.shiptrack_pro.security.JwtAuthFilter;
+
+import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableMethodSecurity
@@ -81,12 +83,18 @@ public class SecurityConfig {
             HttpSecurity http) throws Exception {
 
         http
+
+                // Disable CSRF because the application uses JWT authentication.
                 .csrf(csrf -> csrf.disable())
 
-                .cors(cors -> cors.configurationSource(
-                        corsConfigurationSource()
-                ))
+                // Enable CORS for the frontend application.
+                .cors(cors ->
+                        cors.configurationSource(
+                                corsConfigurationSource()
+                        )
+                )
 
+                // Use stateless authentication with JWT.
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
@@ -95,37 +103,26 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
 
-                        // ==========================================
-                        // AUTHENTICATION
-                        // ==========================================
-
-                        .requestMatchers("/api/auth/**")
+                        // Authentication endpoints are publicly accessible.
+                        .requestMatchers(
+                                "/api/auth/**"
+                        )
                         .permitAll()
 
-
-                        // ==========================================
-                        // WEBSOCKET
-                        // ==========================================
-
-                        .requestMatchers("/ws/tracking/**")
+                        // WebSocket tracking connections are publicly accessible.
+                        .requestMatchers(
+                                "/ws/tracking/**"
+                        )
                         .permitAll()
 
-
-                        // ==========================================
-                        // DISTANCE
-                        // ==========================================
-
+                        // Distance calculation is publicly accessible.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/shipments/distance"
                         )
                         .permitAll()
 
-
-                        // ==========================================
-                        // SHIPMENT CREATION
-                        // ==========================================
-
+                        // Customers and Business Clients can create shipments.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/shipments"
@@ -135,33 +132,21 @@ public class SecurityConfig {
                                 "BUSINESS_CLIENT"
                         )
 
-
-                        // ==========================================
-                        // SHIPMENT READ
-                        // ==========================================
-
+                        // Authenticated users can read shipment information.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/shipments/**"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // PROFILE
-                        // ==========================================
-
+                        // Authenticated users can update their profile.
                         .requestMatchers(
                                 HttpMethod.PUT,
                                 "/api/users/*/profile"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // USER STATUS
-                        // ==========================================
-
+                        // Only operational/support/admin roles can change user status.
                         .requestMatchers(
                                 HttpMethod.PATCH,
                                 "/api/users/*/status"
@@ -172,22 +157,14 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
-
-                        // ==========================================
-                        // TRACKING HISTORY
-                        // ==========================================
-
+                        // Authenticated users can view tracking history.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/tracking/**"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // TRACKING EVENTS
-                        // ==========================================
-
+                        // Only Logistics Operators and Admins can create tracking events.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/tracking/**"
@@ -197,11 +174,7 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
-
-                        // ==========================================
-                        // LIVE DRIVER LOCATION
-                        // ==========================================
-
+                        // Logistics Operators and Admins can update live driver locations.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/routes/*/location"
@@ -211,22 +184,21 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
+                        // Route history is available to authenticated users.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/routes/*/history"
+                        )
+                        .authenticated()
 
-                        // ==========================================
-                        // ROUTE READ
-                        // ==========================================
-
+                        // Authenticated users can read current route information.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/routes/**"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // ROUTE CREATE
-                        // ==========================================
-
+                        // Only Logistics Operators and Admins can create routes.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/routes/**"
@@ -236,11 +208,7 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
-
-                        // ==========================================
-                        // ROUTE UPDATE
-                        // ==========================================
-
+                        // Only Logistics Operators and Admins can update routes.
                         .requestMatchers(
                                 HttpMethod.PUT,
                                 "/api/routes/**"
@@ -259,30 +227,22 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
-
-                        // ==========================================
-                        // PACKAGES
-                        // ==========================================
-
+                        // Authenticated users can access shipment packages.
                         .requestMatchers(
                                 "/api/shipments/*/packages"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // PROOF OF DELIVERY
-                        // ==========================================
-
-                        // Operator submits POD
+                        // Only Logistics Operators can submit proof of delivery.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/pod/**"
                         )
-                        .hasRole("LOGISTICS_OPERATOR")
+                        .hasRole(
+                                "LOGISTICS_OPERATOR"
+                        )
 
-
-                        // Support Agent/Admin verifies POD
+                        // Support Agents and Admins can verify proof of delivery.
                         .requestMatchers(
                                 HttpMethod.PATCH,
                                 "/api/pod/*/verify"
@@ -292,36 +252,63 @@ public class SecurityConfig {
                                 "ADMINISTRATOR"
                         )
 
-
-                        // Customer/Business Client/Support/Admin
-                        // can reach the endpoint.
-                        // Actual ownership authorization is checked
-                        // inside ProofOfDeliveryService.
+                        // Authenticated users can access POD.
+                        // Ownership is validated inside ProofOfDeliveryService.
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/pod/**"
                         )
                         .authenticated()
 
-
-                        // ==========================================
-                        // ANALYTICS & REPORTS
-                        // ==========================================
-
+                        // Customer can access only customer analytics.
                         .requestMatchers(
-                                "/api/analytics/**",
+                                HttpMethod.GET,
+                                "/api/analytics/customer"
+                        )
+                        .hasRole(
+                                "CUSTOMER"
+                        )
+
+                        // Business Client can access only business analytics.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/analytics/business"
+                        )
+                        .hasRole(
+                                "BUSINESS_CLIENT"
+                        )
+
+                        // Admin can access platform-wide analytics.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/analytics/admin"
+                        )
+                        .hasRole(
+                                "ADMINISTRATOR"
+                        )
+
+                        // Admin-only route analytics if exposed separately.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/analytics/routes"
+                        )
+                        .hasRole(
+                                "ADMINISTRATOR"
+                        )
+
+                        // Customer, Business Client and Admin can generate reports.
+                        // Ownership and data scope are validated in ReportBuildingService.
+                        .requestMatchers(
+                                HttpMethod.GET,
                                 "/api/reports/**"
                         )
                         .hasAnyRole(
+                                "CUSTOMER",
                                 "BUSINESS_CLIENT",
                                 "ADMINISTRATOR"
                         )
 
-
-                        // ==========================================
-                        // ETA
-                        // ==========================================
-
+                        // ETA prediction endpoints.
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/eta/**"
@@ -334,31 +321,30 @@ public class SecurityConfig {
                         )
                         .authenticated()
 
+                        // Only Admins can access admin endpoints.
+                        .requestMatchers(
+                                "/api/admin/**"
+                        )
+                        .hasRole(
+                                "ADMINISTRATOR"
+                        )
 
-                        // ==========================================
-                        // ADMIN
-                        // ==========================================
-
-                        .requestMatchers("/api/admin/**")
-                        .hasRole("ADMINISTRATOR")
-
-
-                        // ==========================================
-                        // EVERYTHING ELSE
-                        // ==========================================
-
+                        // All remaining endpoints require authentication.
                         .anyRequest()
                         .authenticated()
                 )
 
+                // Disable HTTP Basic authentication.
                 .httpBasic(basic ->
                         basic.disable()
                 )
 
+                // Disable form-based login because JWT is used.
                 .formLogin(form ->
                         form.disable()
                 )
 
+                // Add JWT authentication before the default username/password filter.
                 .addFilterBefore(
                         jwtAuthFilter,
                         UsernamePasswordAuthenticationFilter.class
