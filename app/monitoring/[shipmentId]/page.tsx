@@ -15,6 +15,7 @@ type RouteData = {
   actualTimeMinutes?: number | null;
   trafficCondition?: string | null;
   createdAt?: string | null;
+  isCurrent?: boolean;
 };
 
 type ShipmentData = {
@@ -78,6 +79,7 @@ export default function MonitoringDetailsPage() {
   const shipmentId = params.shipmentId as string;
 
   const [route, setRoute] = useState<RouteData | null>(null);
+  const [routeHistory, setRouteHistory] = useState<RouteData[]>([]);
   const [shipment, setShipment] = useState<ShipmentData | null>(null);
   const [pod, setPod] = useState<PodData | null>(null);
 
@@ -514,6 +516,52 @@ export default function MonitoringDetailsPage() {
         }
       }
 
+      // Fetch complete route history
+      try {
+        const historyResponse = await fetch(
+          `http://localhost:8080/api/routes/${shipmentId}/history`,
+          {
+            method: "GET",
+            headers,
+            cache: "no-store",
+          }
+        );
+
+        if (historyResponse.status === 401) {
+          localStorage.removeItem("token");
+          router.replace("/login");
+          return;
+        }
+
+        const historyText =
+          await historyResponse.text();
+
+        if (
+          historyResponse.ok &&
+          historyText
+        ) {
+          const historyData =
+            JSON.parse(historyText);
+
+          if (Array.isArray(historyData)) {
+            setRouteHistory(historyData);
+          } else {
+            setRouteHistory([]);
+          }
+        } else {
+          setRouteHistory([]);
+        }
+      } catch (historyError) {
+        console.error(
+          "Route history error:",
+          historyError
+        );
+
+        // Do not break live monitoring if
+        // history endpoint temporarily fails.
+        setRouteHistory([]);
+      }
+
       const podResponse = await fetch(
         `http://localhost:8080/api/pod/${shipmentId}`,
         {
@@ -920,6 +968,203 @@ export default function MonitoringDetailsPage() {
                 {lastUpdated || "Just now"}
               </span>
             </div>
+
+            <div style={styles.routeHistoryBox}>
+              <div style={styles.routeHistoryHeader}>
+                <div>
+                  <h2 style={styles.sectionTitle}>
+                    Route History
+                  </h2>
+
+                  <p style={styles.routeHistorySubtitle}>
+                    Complete route history for this shipment
+                  </p>
+                </div>
+
+                <span style={styles.routeCountBadge}>
+                  {routeHistory.length}{" "}
+                  {routeHistory.length === 1
+                    ? "Route"
+                    : "Routes"}
+                </span>
+              </div>
+
+              {routeHistory.length === 0 ? (
+                <div style={styles.noHistoryBox}>
+                  No route history available.
+                </div>
+              ) : (
+                <div style={styles.routeHistoryList}>
+                  {routeHistory.map(
+                    (historyRoute, index) => {
+                      const isCurrent =
+                        historyRoute.isCurrent === true ||
+                        historyRoute.id === route?.id;
+
+                      return (
+                        <div
+                          key={
+                            historyRoute.id ??
+                            `${historyRoute.shipmentId}-${index}`
+                          }
+                          style={{
+                            ...styles.historyRouteCard,
+                            ...(isCurrent
+                              ? styles.currentHistoryRoute
+                              : {}),
+                          }}
+                        >
+                          <div
+                            style={
+                              styles.historyRouteHeader
+                            }
+                          >
+                            <div>
+                              <strong
+                                style={
+                                  styles.historyRouteName
+                                }
+                              >
+                                {historyRoute.origin ||
+                                  "Not available"}{" "}
+                                →{" "}
+                                {historyRoute.destination ||
+                                  "Not available"}
+                              </strong>
+
+                              <p
+                                style={
+                                  styles.historyCreatedAt
+                                }
+                              >
+                                Created:{" "}
+                                {historyRoute.createdAt
+                                  ? new Date(
+                                      historyRoute.createdAt
+                                    ).toLocaleString()
+                                  : "N/A"}
+                              </p>
+                            </div>
+
+                            <span
+                              style={
+                                isCurrent
+                                  ? styles.currentRouteBadge
+                                  : styles.previousRouteBadge
+                              }
+                            >
+                              {isCurrent
+                                ? "CURRENT"
+                                : "PREVIOUS"}
+                            </span>
+                          </div>
+
+                          <div
+                            style={
+                              styles.historyRouteDetails
+                            }
+                          >
+                            <div>
+                              <span
+                                style={
+                                  styles.historyDetailLabel
+                                }
+                              >
+                                Route ID
+                              </span>
+
+                              <strong
+                                style={
+                                  styles.historyDetailValue
+                                }
+                              >
+                                #{historyRoute.id ??
+                                  "N/A"}
+                              </strong>
+                            </div>
+
+                            <div>
+                              <span
+                                style={
+                                  styles.historyDetailLabel
+                                }
+                              >
+                                Distance
+                              </span>
+
+                              <strong
+                                style={
+                                  styles.historyDetailValue
+                                }
+                              >
+                                {historyRoute.distanceKm !==
+                                  null &&
+                                historyRoute.distanceKm !==
+                                  undefined
+                                  ? `${Number(
+                                      historyRoute.distanceKm
+                                    ).toFixed(1)} km`
+                                  : "N/A"}
+                              </strong>
+                            </div>
+
+                            <div>
+                              <span
+                                style={
+                                  styles.historyDetailLabel
+                                }
+                              >
+                                Estimated Time
+                              </span>
+
+                              <strong
+                                style={
+                                  styles.historyDetailValue
+                                }
+                              >
+                                {formatMinutes(
+                                  historyRoute.estimatedTimeMinutes
+                                )}
+                              </strong>
+                            </div>
+
+                            <div>
+                              <span
+                                style={
+                                  styles.historyDetailLabel
+                                }
+                              >
+                                Actual Time
+                              </span>
+
+                              <strong
+                                style={
+                                  styles.historyDetailValue
+                                }
+                              >
+                                {formatMinutes(
+                                  historyRoute.actualTimeMinutes
+                                )}
+                              </strong>
+                            </div>
+                          </div>
+
+                          {historyRoute.trafficCondition && (
+                            <div
+                              style={
+                                styles.historyReasonBox
+                              }
+                            >
+                              {historyRoute.trafficCondition}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -1254,5 +1499,130 @@ const styles: Record<
     color: "#1f2937",
     fontSize: "16px",
     cursor: "pointer",
+  },
+
+  routeHistoryBox: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    padding: "25px",
+    borderRadius: "15px",
+    marginBottom: "20px",
+  },
+
+  routeHistoryHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "20px",
+    marginBottom: "20px",
+  },
+
+  routeHistorySubtitle: {
+    color: "#64748b",
+    fontSize: "14px",
+    margin: "7px 0 0",
+  },
+
+  routeCountBadge: {
+    background: "#f1f5f9",
+    color: "#334155",
+    padding: "7px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  noHistoryBox: {
+    background: "#f8fafc",
+    borderRadius: "12px",
+    padding: "20px",
+    textAlign: "center",
+    color: "#64748b",
+  },
+
+  routeHistoryList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "15px",
+  },
+
+  historyRouteCard: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "18px",
+    background: "#ffffff",
+  },
+
+  currentHistoryRoute: {
+    border: "2px solid #22c55e",
+    background: "#f0fdf4",
+  },
+
+  historyRouteHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "15px",
+    marginBottom: "16px",
+  },
+
+  historyRouteName: {
+    color: "#111827",
+    fontSize: "16px",
+  },
+
+  historyCreatedAt: {
+    color: "#64748b",
+    fontSize: "12px",
+    margin: "6px 0 0",
+  },
+
+  currentRouteBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "6px 10px",
+    borderRadius: "15px",
+    fontSize: "11px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  previousRouteBadge: {
+    background: "#f1f5f9",
+    color: "#64748b",
+    padding: "6px 10px",
+    borderRadius: "15px",
+    fontSize: "11px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  historyRouteDetails: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(4, minmax(0, 1fr))",
+    gap: "12px",
+  },
+
+  historyDetailLabel: {
+    display: "block",
+    color: "#64748b",
+    fontSize: "12px",
+    marginBottom: "4px",
+  },
+
+  historyDetailValue: {
+    color: "#111827",
+    fontSize: "14px",
+  },
+
+  historyReasonBox: {
+    marginTop: "15px",
+    paddingTop: "12px",
+    borderTop: "1px solid #e5e7eb",
+    color: "#475569",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 };

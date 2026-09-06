@@ -45,6 +45,11 @@ interface AdminAnalytics {
   shipmentStatusBreakdown: Record<string, number>;
   routePerformance: RoutePerformance[];
 
+  averageRouteDistanceKm: number | null;
+  timeEstimateAccuracy: number | null;
+  bestRoute: RoutePerformance | null;
+  worstRoute: RoutePerformance | null;
+
   systemMonitoring: SystemMonitoring;
   reports: ReportsSummary;
 }
@@ -971,6 +976,53 @@ function AdminDashboard({
       </div>
 
 
+      {/* ROUTE MANAGEMENT ANALYTICS */}
+
+      <h3 className="group-heading">
+        Route Management Analytics
+      </h3>
+
+      <div className="stats-grid">
+
+        <StatCard
+          icon="🛣️"
+          title="Avg Route Distance"
+          value={
+            data.averageRouteDistanceKm !== null &&
+            data.averageRouteDistanceKm !== undefined
+              ? `${data.averageRouteDistanceKm.toFixed(2)} km`
+              : "—"
+          }
+        />
+
+        <StatCard
+          icon="🎯"
+          title="Time Estimate Accuracy"
+          value={
+            data.timeEstimateAccuracy !== null &&
+            data.timeEstimateAccuracy !== undefined
+              ? `${data.timeEstimateAccuracy.toFixed(1)}%`
+              : "—"
+          }
+        />
+
+        <RouteSummaryCard
+          title="Best Route"
+          icon="🏆"
+          route={data.bestRoute}
+          getStatusClass={getStatusClass}
+        />
+
+        <RouteSummaryCard
+          title="Worst Route"
+          icon="⚠️"
+          route={data.worstRoute}
+          getStatusClass={getStatusClass}
+        />
+
+      </div>
+
+
       {/* STATUS + SYSTEM */}
 
       <div className="dashboard-section">
@@ -1129,6 +1181,53 @@ function StatCard({
 
       </div>
 
+    </div>
+  );
+}
+
+
+function RouteSummaryCard({
+  title,
+  icon,
+  route,
+  getStatusClass,
+}: {
+  title: string;
+  icon: string;
+  route: RoutePerformance | null;
+  getStatusClass: (status: string) => string;
+}) {
+  return (
+    <div className="stat-card route-summary-card">
+      <div className="stat-icon">
+        {icon}
+      </div>
+
+      <div className="route-summary-content">
+        <p>{title}</p>
+
+        {!route ? (
+          <h2>—</h2>
+        ) : (
+          <>
+            <strong>
+              Route #{route.routeId} · Shipment #{route.shipmentId}
+            </strong>
+
+            <span>
+              {route.origin} → {route.destination}
+            </span>
+
+            <small>
+              {route.actualTimeMinutes !== null
+                ? `Actual: ${route.actualTimeMinutes} min`
+                : route.estimatedTimeMinutes !== null
+                  ? `Estimated: ${route.estimatedTimeMinutes} min`
+                  : "Time data unavailable"}
+            </small>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1666,6 +1765,16 @@ tr:hover td {
   .mini-metrics,
   .notification-stats {
     grid-template-columns: 1fr;
+  }
+
+  .route-summary-card {
+    align-items: flex-start;
+  }
+
+  .route-summary-content strong,
+  .route-summary-content span,
+  .route-summary-content small {
+    display: block;
   }
 }
 `;

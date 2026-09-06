@@ -3,229 +3,606 @@
 type RouteData = {
   id?: number;
   shipmentId?: number;
-  driverId?: number;
-  origin?: string;
-  destination?: string;
-  waypoints?: string;
-  distanceKm?: number;
-  estimatedTimeMinutes?: number;
-  actualTimeMinutes?: number;
-  trafficCondition?: string;
-
-  lastLatitude?: number;
-  lastLongitude?: number;
-  lastLocation?: string;
-  lastLocationAt?: string;
+  driverId?: number | null;
+  origin?: string | null;
+  destination?: string | null;
+  waypoints?: string | null;
+  distanceKm?: number | null;
+  estimatedTimeMinutes?: number | null;
+  actualTimeMinutes?: number | null;
+  trafficCondition?: string | null;
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocation?: string | null;
+  lastLocationAt?: string | null;
+  createdAt?: string | null;
+  isCurrent?: boolean;
 };
 
 interface MonitoringRouteInfoProps {
   route: RouteData;
+  routeHistory?: RouteData[];
 }
 
 export default function MonitoringRouteInfo({
   route,
+  routeHistory = [],
 }: MonitoringRouteInfoProps) {
+  const formatMinutes = (
+    minutes: number | null | undefined
+  ) => {
+    if (
+      minutes === null ||
+      minutes === undefined ||
+      Number.isNaN(Number(minutes))
+    ) {
+      return "N/A";
+    }
+
+    const totalMinutes = Math.round(Number(minutes));
+
+    if (totalMinutes < 60) {
+      return `${totalMinutes} min`;
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const remainingMinutes = totalMinutes % 60;
+
+    if (remainingMinutes === 0) {
+      return `${hours} hr`;
+    }
+
+    return `${hours} hr ${remainingMinutes} min`;
+  };
+
+  const formatDate = (
+    dateValue: string | null | undefined
+  ) => {
+    if (!dateValue) {
+      return "N/A";
+    }
+
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
+      return dateValue;
+    }
+
+    return date.toLocaleString();
+  };
+
   return (
-    <>
-      {/* ROUTE STATUS */}
-      <div style={styles.statusBox}>
-        <h2 style={styles.sectionTitle}>Route Status</h2>
+    <div style={styles.wrapper}>
+      {/* Current Route */}
+      <div style={styles.currentRouteCard}>
+        <div style={styles.currentHeader}>
+          <div>
+            <h2 style={styles.title}>
+              Current Route
+            </h2>
 
-        <p style={styles.statusText}>
-          <strong>Origin:</strong>{" "}
-          {route.origin || "N/A"}
-        </p>
-
-        <p style={styles.statusText}>
-          <strong>Destination:</strong>{" "}
-          {route.destination || "N/A"}
-        </p>
-
-        <p style={styles.statusText}>
-          <strong>Traffic Condition:</strong>{" "}
-          {route.trafficCondition || "N/A"}
-        </p>
-      </div>
-
-      {/* INFORMATION CARDS */}
-      <div style={styles.grid}>
-        <div style={styles.infoCard}>
-          <span style={styles.infoLabel}>
-            Distance
-          </span>
-
-          <strong style={styles.infoValue}>
-            {route.distanceKm != null
-              ? `${route.distanceKm} km`
-              : "N/A"}
-          </strong>
-        </div>
-
-        <div style={styles.infoCard}>
-          <span style={styles.infoLabel}>
-            Estimated Time
-          </span>
-
-          <strong style={styles.infoValue}>
-            {route.estimatedTimeMinutes != null
-              ? `${route.estimatedTimeMinutes} minutes`
-              : "N/A"}
-          </strong>
-        </div>
-
-        <div style={styles.infoCard}>
-          <span style={styles.infoLabel}>
-            Actual Time
-          </span>
-
-          <strong style={styles.infoValue}>
-            {route.actualTimeMinutes != null
-              ? `${route.actualTimeMinutes} minutes`
-              : "N/A"}
-          </strong>
-        </div>
-
-        <div style={styles.infoCard}>
-          <span style={styles.infoLabel}>
-            Driver ID
-          </span>
-
-          <strong style={styles.infoValue}>
-            {route.driverId ?? "N/A"}
-          </strong>
-        </div>
-      </div>
-
-      {/* LIVE LOCATION */}
-      <div style={styles.locationBox}>
-        <h2 style={styles.sectionTitle}>
-          Current Location
-        </h2>
-
-        <p style={styles.statusText}>
-          <strong>Location:</strong>{" "}
-          {route.lastLocation || "Driver location not available yet."}
-        </p>
-
-        {route.lastLatitude != null &&
-          route.lastLongitude != null && (
-            <p style={styles.statusText}>
-              <strong>Coordinates:</strong>{" "}
-              {route.lastLatitude}, {route.lastLongitude}
+            <p style={styles.routeText}>
+              {route.origin || "Not available"} →{" "}
+              {route.destination || "Not available"}
             </p>
-          )}
+          </div>
 
-        {route.lastLocationAt && (
-          <p style={styles.statusText}>
-            <strong>Last Updated:</strong>{" "}
-            {new Date(route.lastLocationAt).toLocaleString()}
-          </p>
+          <span style={styles.currentBadge}>
+            CURRENT
+          </span>
+        </div>
+
+        <div style={styles.infoGrid}>
+          <div style={styles.infoCard}>
+            <span style={styles.label}>
+              Distance
+            </span>
+
+            <strong style={styles.value}>
+              {route.distanceKm !== null &&
+              route.distanceKm !== undefined
+                ? `${Number(route.distanceKm).toFixed(1)} km`
+                : "N/A"}
+            </strong>
+          </div>
+
+          <div style={styles.infoCard}>
+            <span style={styles.label}>
+              Estimated Time
+            </span>
+
+            <strong style={styles.value}>
+              {formatMinutes(
+                route.estimatedTimeMinutes
+              )}
+            </strong>
+          </div>
+
+          <div style={styles.infoCard}>
+            <span style={styles.label}>
+              Actual Time
+            </span>
+
+            <strong style={styles.value}>
+              {formatMinutes(
+                route.actualTimeMinutes
+              )}
+            </strong>
+          </div>
+
+          <div style={styles.infoCard}>
+            <span style={styles.label}>
+              Driver
+            </span>
+
+            <strong style={styles.value}>
+              {route.driverId !== null &&
+              route.driverId !== undefined
+                ? route.driverId
+                : "Not assigned"}
+            </strong>
+          </div>
+        </div>
+
+        {route.trafficCondition && (
+          <div style={styles.reasonBox}>
+            <span style={styles.reasonLabel}>
+              Route Selection / Traffic
+            </span>
+
+            <p style={styles.reasonText}>
+              {route.trafficCondition}
+            </p>
+          </div>
+        )}
+
+        {route.lastLocation && (
+          <div style={styles.locationBox}>
+            <span style={styles.label}>
+              Current Location
+            </span>
+
+            <strong style={styles.locationValue}>
+              {route.lastLocation}
+            </strong>
+
+            {route.lastLocationAt && (
+              <span style={styles.locationTime}>
+                Updated:{" "}
+                {formatDate(route.lastLocationAt)}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {/* DELIVERY PROGRESS */}
-      <div style={styles.progressBox}>
-        <h2 style={styles.sectionTitle}>
-          Delivery Progress
-        </h2>
+      {/* Route History */}
+      <div style={styles.historyCard}>
+        <div style={styles.historyHeader}>
+          <div>
+            <h2 style={styles.title}>
+              Route History
+            </h2>
 
-        <div style={styles.progressTrack}>
-          <div style={styles.progressFill} />
+            <p style={styles.historySubtitle}>
+              Previous and current routes for this
+              shipment
+            </p>
+          </div>
+
+          <span style={styles.countBadge}>
+            {routeHistory.length}{" "}
+            {routeHistory.length === 1
+              ? "Route"
+              : "Routes"}
+          </span>
         </div>
 
-        <p style={styles.progressText}>
-          Shipment route is being monitored.
-        </p>
+        {routeHistory.length === 0 ? (
+          <div style={styles.emptyHistory}>
+            <p>
+              No route history available yet.
+            </p>
+          </div>
+        ) : (
+          <div style={styles.historyList}>
+            {routeHistory.map(
+              (historyRoute, index) => {
+                const current =
+                  historyRoute.isCurrent === true ||
+                  historyRoute.id === route.id;
+
+                return (
+                  <div
+                    key={
+                      historyRoute.id ??
+                      `${historyRoute.shipmentId}-${index}`
+                    }
+                    style={{
+                      ...styles.historyItem,
+                      ...(current
+                        ? styles.currentHistoryItem
+                        : {}),
+                    }}
+                  >
+                    <div style={styles.historyTop}>
+                      <div>
+                        <strong
+                          style={styles.historyRouteTitle}
+                        >
+                          {historyRoute.origin ||
+                            "Not available"}{" "}
+                          →{" "}
+                          {historyRoute.destination ||
+                            "Not available"}
+                        </strong>
+
+                        <p
+                          style={
+                            styles.historyDate
+                          }
+                        >
+                          Created:{" "}
+                          {formatDate(
+                            historyRoute.createdAt
+                          )}
+                        </p>
+                      </div>
+
+                      <span
+                        style={
+                          current
+                            ? styles.currentHistoryBadge
+                            : styles.previousBadge
+                        }
+                      >
+                        {current
+                          ? "CURRENT"
+                          : "PREVIOUS"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={styles.historyInfoGrid}
+                    >
+                      <div>
+                        <span
+                          style={styles.smallLabel}
+                        >
+                          Distance
+                        </span>
+
+                        <strong
+                          style={
+                            styles.smallValue
+                          }
+                        >
+                          {historyRoute.distanceKm !==
+                            null &&
+                          historyRoute.distanceKm !==
+                            undefined
+                            ? `${Number(
+                                historyRoute.distanceKm
+                              ).toFixed(1)} km`
+                            : "N/A"}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span
+                          style={styles.smallLabel}
+                        >
+                          Estimated Time
+                        </span>
+
+                        <strong
+                          style={
+                            styles.smallValue
+                          }
+                        >
+                          {formatMinutes(
+                            historyRoute.estimatedTimeMinutes
+                          )}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span
+                          style={styles.smallLabel}
+                        >
+                          Actual Time
+                        </span>
+
+                        <strong
+                          style={
+                            styles.smallValue
+                          }
+                        >
+                          {formatMinutes(
+                            historyRoute.actualTimeMinutes
+                          )}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span
+                          style={styles.smallLabel}
+                        >
+                          Route ID
+                        </span>
+
+                        <strong
+                          style={
+                            styles.smallValue
+                          }
+                        >
+                          #{historyRoute.id ??
+                            "N/A"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {historyRoute.trafficCondition && (
+                      <div
+                        style={
+                          styles.historyReason
+                        }
+                      >
+                        {historyRoute.trafficCondition}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+            )}
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  statusBox: {
+const styles: Record<
+  string,
+  React.CSSProperties
+> = {
+  wrapper: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+    marginTop: "20px",
+  },
+
+  currentRouteCard: {
     background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "16px",
     padding: "25px",
-    borderRadius: "15px",
-    marginBottom: "20px",
-    color: "#1e3a8a",
   },
 
-  sectionTitle: {
-    color: "#111827",
-    marginTop: 0,
-    marginBottom: "18px",
-  },
-
-  statusText: {
-    color: "#1e3a8a",
-    margin: "10px 0",
-  },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
+  currentHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: "20px",
     marginBottom: "20px",
   },
 
-  infoCard: {
-    background: "#f8fafc",
-    border: "1px solid #e5e7eb",
-    borderRadius: "14px",
-    padding: "24px",
-    color: "#111827",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-
-  infoLabel: {
-    display: "block",
-    color: "#475569",
-    fontSize: "15px",
-    fontWeight: 500,
-  },
-
-  infoValue: {
-    display: "block",
+  title: {
+    margin: 0,
     color: "#111827",
     fontSize: "22px",
     fontWeight: 700,
   },
 
-  locationBox: {
-    background: "#f0fdf4",
-    padding: "25px",
-    borderRadius: "15px",
-    marginBottom: "20px",
-    border: "1px solid #bbf7d0",
+  routeText: {
+    margin: "8px 0 0",
+    color: "#1e3a8a",
+    fontSize: "15px",
   },
 
-  progressBox: {
-    background: "#f8fafc",
-    padding: "25px",
-    borderRadius: "15px",
-    marginBottom: "20px",
+  currentBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "7px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
   },
 
-  progressTrack: {
-    width: "100%",
-    height: "12px",
-    background: "#e5e7eb",
-    borderRadius: "10px",
-    overflow: "hidden",
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "15px",
   },
 
-  progressFill: {
-    width: "55%",
-    height: "100%",
-    background: "#2563eb",
-    borderRadius: "10px",
+  infoCard: {
+    background: "#ffffff",
+    border: "1px solid #dbeafe",
+    borderRadius: "12px",
+    padding: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
   },
 
-  progressText: {
+  label: {
     color: "#475569",
-    marginBottom: 0,
-    marginTop: "12px",
+    fontSize: "13px",
+    fontWeight: 500,
+  },
+
+  value: {
+    color: "#111827",
+    fontSize: "18px",
+    fontWeight: 700,
+  },
+
+  reasonBox: {
+    marginTop: "15px",
+    background: "#ffffff",
+    borderRadius: "12px",
+    padding: "15px",
+    border: "1px solid #dbeafe",
+  },
+
+  reasonLabel: {
+    color: "#1e3a8a",
+    fontSize: "13px",
+    fontWeight: 700,
+  },
+
+  reasonText: {
+    color: "#475569",
+    fontSize: "14px",
+    lineHeight: 1.6,
+    margin: "7px 0 0",
+  },
+
+  locationBox: {
+    marginTop: "15px",
+    background: "#ffffff",
+    borderRadius: "12px",
+    padding: "15px",
+    border: "1px solid #dbeafe",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+  },
+
+  locationValue: {
+    color: "#111827",
+    fontSize: "17px",
+  },
+
+  locationTime: {
+    color: "#64748b",
+    fontSize: "12px",
+  },
+
+  historyCard: {
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "16px",
+    padding: "25px",
+  },
+
+  historyHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "20px",
+    marginBottom: "20px",
+  },
+
+  historySubtitle: {
+    color: "#64748b",
+    fontSize: "14px",
+    margin: "7px 0 0",
+  },
+
+  countBadge: {
+    background: "#f1f5f9",
+    color: "#334155",
+    padding: "7px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  emptyHistory: {
+    background: "#f8fafc",
+    borderRadius: "12px",
+    padding: "25px",
+    textAlign: "center",
+    color: "#64748b",
+  },
+
+  historyList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "15px",
+  },
+
+  historyItem: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "14px",
+    padding: "18px",
+    background: "#ffffff",
+  },
+
+  currentHistoryItem: {
+    border: "2px solid #22c55e",
+    background: "#f0fdf4",
+  },
+
+  historyTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "15px",
+    marginBottom: "15px",
+  },
+
+  historyRouteTitle: {
+    color: "#111827",
+    fontSize: "16px",
+  },
+
+  historyDate: {
+    color: "#64748b",
+    fontSize: "12px",
+    margin: "6px 0 0",
+  },
+
+  currentHistoryBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "6px 10px",
+    borderRadius: "15px",
+    fontSize: "11px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  previousBadge: {
+    background: "#f1f5f9",
+    color: "#64748b",
+    padding: "6px 10px",
+    borderRadius: "15px",
+    fontSize: "11px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  historyInfoGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(4, minmax(0, 1fr))",
+    gap: "12px",
+  },
+
+  smallLabel: {
+    display: "block",
+    color: "#64748b",
+    fontSize: "12px",
+    marginBottom: "4px",
+  },
+
+  smallValue: {
+    color: "#111827",
+    fontSize: "14px",
+  },
+
+  historyReason: {
+    marginTop: "14px",
+    paddingTop: "12px",
+    borderTop: "1px solid #e5e7eb",
+    color: "#475569",
+    fontSize: "13px",
+    lineHeight: 1.5,
   },
 };
