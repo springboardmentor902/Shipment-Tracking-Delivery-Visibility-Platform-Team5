@@ -1,165 +1,311 @@
 "use client";
 
-import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const router = useRouter();
 
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleTrack = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!trackingNumber.trim()) {
-      alert("Please enter a tracking number");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(
-        `http://localhost:8080/api/shipments/track?trackingNumber=${encodeURIComponent(
-          trackingNumber.trim()
-        )}`
-      );
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        alert(text || "Shipment not found");
-        return;
-      }
-
-      const shipment = JSON.parse(text);
-
-      if (!shipment.id) {
-        alert("Invalid shipment response");
-        return;
-      }
-
-      router.push(`/tracking/${shipment.id}`);
-    } catch (error) {
-      console.error(error);
-      alert("Unable to connect to server");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <main className="landing-page">
-      <nav className="landing-nav">
-        <div className="brand">
+    <main
+      className="landing-page"
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background:
+          "linear-gradient(135deg, #f8fbff 0%, #eef5ff 50%, #f8fbff 100%)",
+        color: "#111827",
+      }}
+    >
+      {/* ========================= */}
+      {/* NAVIGATION */}
+      {/* ========================= */}
+
+      <nav
+        className="landing-nav"
+        style={{
+          height: "72px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 7%",
+          background: "rgba(255, 255, 255, 0.96)",
+          borderBottom: "1px solid #e5e7eb",
+          boxShadow:
+            "0 2px 10px rgba(15, 23, 42, 0.04)",
+        }}
+      >
+        <div
+          className="brand"
+          style={{
+            fontSize: "26px",
+            fontWeight: 800,
+            letterSpacing: "-0.5px",
+            color: "#2563eb",
+          }}
+        >
           ShipTrack
         </div>
 
-        <div className="nav-actions">
+        <div
+          className="nav-actions"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+          }}
+        >
           <button
             type="button"
-            className="nav-login"
             onClick={() => router.push("/login")}
+            style={{
+              padding: "10px 22px",
+              borderRadius: "8px",
+              border: "1px solid #2563eb",
+              background: "#ffffff",
+              color: "#2563eb",
+              fontSize: "14px",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
           >
             Login
           </button>
 
           <button
             type="button"
-            className="nav-register"
             onClick={() => router.push("/register")}
+            style={{
+              padding: "10px 22px",
+              borderRadius: "8px",
+              border: "1px solid #2563eb",
+              background: "#2563eb",
+              color: "#ffffff",
+              fontSize: "14px",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
           >
             Register
           </button>
         </div>
       </nav>
 
-      <section className="hero-section">
-        <div className="hero-content">
-          <span className="hero-badge">
-            Live Delivery Monitoring
-          </span>
+      {/* ========================= */}
+      {/* HERO SECTION */}
+      {/* ========================= */}
 
-          <h1>
-            Track Your Shipment
-            <br />
-            <span>Anywhere, Anytime</span>
+      <section
+        className="hero-section"
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "60px 24px 80px",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Decorative background elements */}
+
+        <div
+          style={{
+            position: "absolute",
+            width: "420px",
+            height: "420px",
+            borderRadius: "50%",
+            background:
+              "rgba(37, 99, 235, 0.06)",
+            top: "-180px",
+            left: "-120px",
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            width: "360px",
+            height: "360px",
+            borderRadius: "50%",
+            background:
+              "rgba(59, 130, 246, 0.05)",
+            bottom: "-170px",
+            right: "-100px",
+          }}
+        />
+
+        <div
+          className="hero-content"
+          style={{
+            position: "relative",
+            zIndex: 1,
+            width: "100%",
+            maxWidth: "900px",
+            textAlign: "center",
+            padding: "55px 40px",
+            borderRadius: "24px",
+            background:
+              "rgba(255, 255, 255, 0.82)",
+            border:
+              "1px solid rgba(226, 232, 240, 0.9)",
+            boxShadow:
+              "0 20px 60px rgba(15, 23, 42, 0.08)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          {/* Badge */}
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 16px",
+              borderRadius: "999px",
+              background: "#eff6ff",
+              border: "1px solid #dbeafe",
+              color: "#2563eb",
+              fontSize: "13px",
+              fontWeight: 700,
+              marginBottom: "22px",
+            }}
+          >
+            <span>🚚</span>
+            Shipment Tracking & Delivery Visibility
+          </div>
+
+          {/* Main Heading */}
+
+          <h1
+            style={{
+              margin: 0,
+              fontSize: "clamp(42px, 6vw, 68px)",
+              lineHeight: "1.08",
+              fontWeight: 800,
+              letterSpacing: "-2px",
+              color: "#111827",
+            }}
+          >
+            ShipTrack
           </h1>
 
-          <p>
-            Enter your tracking number to view shipment status,
-            live location, route information and delivery updates.
+          <h2
+            style={{
+              margin: "10px 0 24px",
+              fontSize: "clamp(25px, 4vw, 40px)",
+              lineHeight: "1.2",
+              fontWeight: 700,
+              color: "#2563eb",
+              letterSpacing: "-1px",
+            }}
+          >
+            Smart Shipment Management
+          </h2>
+
+          {/* Description */}
+
+          <p
+            style={{
+              maxWidth: "680px",
+              margin: "0 auto",
+              fontSize: "17px",
+              lineHeight: "1.7",
+              color: "#475569",
+            }}
+          >
+            ShipTrack enables secure shipment management,
+            delivery visibility and real-time tracking.
+            <br />
+            Access features based on your role and manage
+            shipments efficiently.
           </p>
 
-          <form
-            className="tracking-form"
-            onSubmit={handleTrack}
+          {/* CTA Buttons */}
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "14px",
+              marginTop: "34px",
+              flexWrap: "wrap",
+            }}
           >
-            <input
-              type="text"
-              placeholder="Enter your tracking number"
-              value={trackingNumber}
-              onChange={(e) =>
-                setTrackingNumber(e.target.value)
-              }
-            />
-
-            <button type="submit" disabled={loading}>
-              {loading ? "Tracking..." : "Track Shipment"}
-            </button>
-          </form>
-
-          <div className="auth-message">
-            <span>Have an account?</span>
-
             <button
               type="button"
               onClick={() => router.push("/login")}
+              style={{
+                minWidth: "130px",
+                padding: "13px 28px",
+                borderRadius: "9px",
+                border: "1px solid #2563eb",
+                background: "#2563eb",
+                color: "#ffffff",
+                fontSize: "15px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow:
+                  "0 8px 18px rgba(37, 99, 235, 0.2)",
+              }}
             >
               Login
             </button>
 
-            <span>or</span>
-
             <button
               type="button"
               onClick={() => router.push("/register")}
+              style={{
+                minWidth: "130px",
+                padding: "13px 28px",
+                borderRadius: "9px",
+                border: "1px solid #2563eb",
+                background: "#ffffff",
+                color: "#2563eb",
+                fontSize: "15px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
             >
-              create an account
+              Register
             </button>
+          </div>
+
+          {/* Small role-based note */}
+
+          <div
+            style={{
+              marginTop: "28px",
+              fontSize: "13px",
+              color: "#64748b",
+            }}
+          >
+            Secure role-based access for customers and
+            delivery teams
           </div>
         </div>
       </section>
 
-      <section className="features-section">
-        <div className="feature-card">
-          <div className="feature-icon">📦</div>
-          <h3>Shipment Tracking</h3>
-          <p>
-            Check your shipment status and delivery information
-            using your tracking number.
-          </p>
-        </div>
+      {/* ========================= */}
+      {/* FOOTER */}
+      {/* ========================= */}
 
-        <div className="feature-card">
-          <div className="feature-icon">📍</div>
-          <h3>Live Tracking</h3>
-          <p>
-            View the current shipment location and planned route
-            on the map.
-          </p>
-        </div>
-
-        <div className="feature-card">
-          <div className="feature-icon">⏱️</div>
-          <h3>ETA Prediction</h3>
-          <p>
-            View estimated delivery time and delay-risk
-            information.
-          </p>
-        </div>
-      </section>
+      <footer
+        style={{
+          padding: "18px 24px",
+          textAlign: "center",
+          fontSize: "12px",
+          color: "#64748b",
+          background: "rgba(255, 255, 255, 0.75)",
+          borderTop: "1px solid #e5e7eb",
+        }}
+      >
+        © {new Date().getFullYear()} ShipTrack ·
+        Shipment Tracking & Delivery Visibility Platform
+      </footer>
     </main>
   );
 }

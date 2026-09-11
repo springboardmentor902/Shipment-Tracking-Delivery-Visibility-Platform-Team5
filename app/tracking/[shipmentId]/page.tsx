@@ -15,6 +15,10 @@ type RouteData = {
   actualTimeMinutes: number | null;
   trafficCondition: string | null;
   createdAt: string | null;
+  lastLatitude: number | null;
+  lastLongitude: number | null;
+  lastLocation: string | null;
+  lastLocationAt: string | null;
 };
 
 type ShipmentData = {
@@ -41,10 +45,36 @@ export default function TrackingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  const [location, setLocation] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [locationMessage, setLocationMessage] = useState("");
+  const [locationError, setLocationError] = useState("");
 
   const fetchTrackingData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
+
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser);
+          setCurrentUserId(
+            user?.id !== undefined && user?.id !== null
+              ? Number(user.id)
+              : null
+          );
+          setCurrentUserRole(
+            String(user?.role || "").toUpperCase()
+          );
+        } catch {
+          setCurrentUserId(null);
+          setCurrentUserRole("");
+        }
+      }
 
       if (!token) {
         router.replace("/login");
@@ -168,6 +198,133 @@ export default function TrackingPage() {
       clearInterval(interval);
     };
   }, [shipmentId, fetchTrackingData]);
+
+  const useMyCurrentLocation = () => {
+    setLocationMessage("");
+    setLocationError("");
+
+    if (!navigator.geolocation) {
+      setLocationError(
+        "Geolocation is not supported by this browser."
+      );
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLatitude(position.coords.latitude.toFixed(7));
+        setLongitude(position.coords.longitude.toFixed(7));
+        setLocationMessage(
+          "Current GPS coordinates loaded. Add a location name if needed."
+        );
+      },
+      (geoError) => {
+        console.error("Geolocation error:", geoError);
+        setLocationError(
+          "Unable to get your current location. Please allow location access."
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  const updateDriverLocation = async () => {
+    setLocationMessage("");
+    setLocationError("");
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    if (!route) {
+      setLocationError("Route information is not available.");
+      return;
+    }
+
+    if (!latitude.trim() || !longitude.trim()) {
+      setLocationError("Latitude and longitude are required.");
+      return;
+    }
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (
+      Number.isNaN(lat) ||
+      Number.isNaN(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      setLocationError("Please enter valid latitude and longitude values.");
+      return;
+    }
+
+    try {
+      setUpdatingLocation(true);
+
+      const query = new URLSearchParams({
+        latitude: String(lat),
+        longitude: String(lng),
+      });
+
+      if (location.trim()) {
+        query.set("location", location.trim());
+      }
+
+      const response = await fetch(
+        `http://localhost:8080/api/routes/${route.id}/location?${query.toString()}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const responseText = await response.text();
+
+      if (response.status === 401) {
+        localStorage.removeItem("token");
+        router.replace("/login");
+        return;
+      }
+
+      if (!response.ok) {
+        setLocationError(
+          responseText || "Failed to update driver location."
+        );
+        return;
+      }
+
+      const updatedRoute: RouteData = JSON.parse(responseText);
+
+      setRoute(updatedRoute);
+      setLastUpdated(new Date().toLocaleString());
+      setLocationMessage("Driver location updated successfully.");
+    } catch (err) {
+      console.error("Location update error:", err);
+      setLocationError("Unable to connect to server.");
+    } finally {
+      setUpdatingLocation(false);
+    }
+  };
+
+  const isAssignedLogisticsOperator =
+    currentUserRole === "LOGISTICS_OPERATOR" &&
+    currentUserId !== null &&
+    shipment?.assignedOperatorId !== null &&
+    shipment?.assignedOperatorId !== undefined &&
+    Number(shipment.assignedOperatorId) === currentUserId;
 
   const getStatusClass = (status: string) => {
     const currentStatus =
@@ -369,32 +526,198 @@ export default function TrackingPage() {
 
             <div style={styles.locationBox}>
               <h2 style={styles.sectionTitle}>
-                Current Location
+                Current Driver Location
               </h2>
 
-              <p style={styles.locationText}>
-                Location:{" "}
-                {route.origin ||
-                  "Driver location is not available yet."}
-              </p>
+              <div style={styles.locationDetails}>
+                <p style={styles.locationText}>
+                  <strong>Location:</strong>{" "}
+                  {route.lastLocation ||
+                    "Driver location is not available yet."}
+                </p>
+
+                <p style={styles.locationText}>
+                  <strong>Latitude:</strong>{" "}
+                  {route.lastLatitude !== null &&
+                  route.lastLatitude !== undefined
+                    ? route.lastLatitude
+                    : "Not available"}
+                </p>
+
+                <p style={styles.locationText}>
+                  <strong>Longitude:</strong>{" "}
+                  {route.lastLongitude !== null &&
+                  route.lastLongitude !== undefined
+                    ? route.lastLongitude
+                    : "Not available"}
+                </p>
+
+                <p style={styles.locationText}>
+                  <strong>Assigned Driver ID:</strong>{" "}
+                  {route.driverId ?? shipment?.assignedOperatorId ?? "Not assigned"}
+                </p>
+
+                <p style={styles.locationText}>
+                  <strong>Location Updated:</strong>{" "}
+                  {route.lastLocationAt
+                    ? new Date(route.lastLocationAt).toLocaleString()
+                    : "Not available yet"}
+                </p>
+              </div>
+
+              {isAssignedLogisticsOperator && (
+                <div style={styles.locationUpdatePanel}>
+                  <h3 style={styles.locationUpdateTitle}>
+                    Update Driver Location
+                  </h3>
+
+                  <p style={styles.locationHelp}>
+                    Only the logistics operator assigned to this shipment can
+                    update its live location.
+                  </p>
+
+                  <div style={styles.locationForm}>
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(event) => setLocation(event.target.value)}
+                      placeholder="Current location (optional)"
+                      style={styles.locationInput}
+                    />
+
+                    <input
+                      type="number"
+                      step="any"
+                      value={latitude}
+                      onChange={(event) => setLatitude(event.target.value)}
+                      placeholder="Latitude"
+                      style={styles.locationInput}
+                    />
+
+                    <input
+                      type="number"
+                      step="any"
+                      value={longitude}
+                      onChange={(event) => setLongitude(event.target.value)}
+                      placeholder="Longitude"
+                      style={styles.locationInput}
+                    />
+                  </div>
+
+                  <div style={styles.locationActions}>
+                    <button
+                      type="button"
+                      onClick={useMyCurrentLocation}
+                      style={styles.secondaryButton}
+                      disabled={updatingLocation}
+                    >
+                      Use My Current Location
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={updateDriverLocation}
+                      style={styles.primaryButton}
+                      disabled={updatingLocation}
+                    >
+                      {updatingLocation
+                        ? "Updating Location..."
+                        : "Update Driver Location"}
+                    </button>
+                  </div>
+
+                  {locationMessage && (
+                    <p style={styles.successText}>
+                      {locationMessage}
+                    </p>
+                  )}
+
+                  {locationError && (
+                    <p style={styles.locationErrorText}>
+                      {locationError}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div style={styles.mapBox}>
-              <iframe
-                title="Shipment Route Map"
-                width="100%"
-                height="400"
-                style={styles.map}
-                loading="lazy"
-                src={`https://www.google.com/maps?q=${encodeURIComponent(
-                  route.origin ||
-                    "Hyderabad, Telangana"
-                )}+to+${encodeURIComponent(
-                  route.destination ||
-                    "Pune, Maharashtra"
-                )}&output=embed`}
-              />
+            <div style={styles.mapSection}>
+              <div style={styles.mapHeader}>
+                <div>
+                  <h2 style={styles.mapTitle}>
+                    Shipment Route Map
+                  </h2>
+
+                  <p style={styles.mapSubtitle}>
+                    Route overview from origin to destination
+                  </p>
+                </div>
+
+                <div style={styles.mapRouteBadge}>
+                  {route.origin || "Origin"} → {route.destination || "Destination"}
+                </div>
+              </div>
+
+              <div style={styles.mapBox}>
+                <iframe
+                  title="Shipment Route Map"
+                  width="100%"
+                  height="400"
+                  style={styles.map}
+                  loading="lazy"
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(
+                    route.origin ||
+                      "Hyderabad, Telangana"
+                  )}+to+${encodeURIComponent(
+                    route.destination ||
+                      "Pune, Maharashtra"
+                  )}&output=embed`}
+                />
+              </div>
             </div>
+
+            {route.lastLatitude !== null &&
+              route.lastLatitude !== undefined &&
+              route.lastLongitude !== null &&
+              route.lastLongitude !== undefined && (
+                <div style={styles.liveMapBox}>
+                  <div style={styles.liveMapHeader}>
+                    <div>
+                      <h2 style={styles.mapTitle}>
+                        Live Driver Location
+                      </h2>
+                      <p style={styles.liveMapText}>
+                        📍 Current driver position is shown below.
+                      </p>
+                    </div>
+
+                    <span style={styles.liveLocationBadge}>
+                      ● Live
+                    </span>
+                  </div>
+
+                  <iframe
+                    title="Live Driver Location Map"
+                    width="100%"
+                    height="400"
+                    style={styles.map}
+                    loading="lazy"
+                    src={`https://www.google.com/maps?q=${route.lastLatitude},${route.lastLongitude}&z=15&output=embed`}
+                  />
+
+                  <div style={styles.coordinatesBox}>
+                    <span>
+                      Latitude: {route.lastLatitude}
+                    </span>
+                    <span>
+                      Longitude: {route.lastLongitude}
+                    </span>
+                    <span>
+                      Location: {route.lastLocation || "Not specified"}
+                    </span>
+                  </div>
+                </div>
+              )}
 
             <div style={styles.updateBox}>
               <strong style={styles.updateLabel}>
@@ -615,12 +938,168 @@ const styles: Record<
     fontSize: "16px",
   },
 
+  locationDetails: {
+    display: "grid",
+    gap: "8px",
+    marginBottom: "20px",
+  },
+
+  locationUpdatePanel: {
+    background: "#ffffff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "12px",
+    padding: "20px",
+    marginTop: "18px",
+  },
+
+  locationUpdateTitle: {
+    color: "#111827",
+    marginTop: 0,
+    marginBottom: "8px",
+    fontSize: "19px",
+  },
+
+  locationHelp: {
+    color: "#475569",
+    marginTop: 0,
+    marginBottom: "16px",
+    lineHeight: 1.5,
+  },
+
+  locationForm: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "12px",
+    marginBottom: "14px",
+  },
+
+  locationInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "12px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "8px",
+    fontSize: "14px",
+    outline: "none",
+  },
+
+  locationActions: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+
+  successText: {
+    color: "#166534",
+    marginBottom: 0,
+    marginTop: "14px",
+    fontWeight: 600,
+  },
+
+  locationErrorText: {
+    color: "#b91c1c",
+    marginBottom: 0,
+    marginTop: "14px",
+    fontWeight: 600,
+  },
+
+  mapSection: {
+    marginBottom: "20px",
+  },
+
+  mapHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: "18px",
+    marginBottom: "14px",
+    flexWrap: "wrap",
+    padding: "0 2px",
+  },
+
+  mapTitle: {
+    color: "#111827",
+    margin: 0,
+    fontSize: "22px",
+    fontWeight: 700,
+    lineHeight: 1.3,
+  },
+
+  mapSubtitle: {
+    color: "#64748b",
+    margin: "5px 0 0",
+    fontSize: "14px",
+    lineHeight: 1.4,
+  },
+
+  mapRouteBadge: {
+    background: "#f8fafc",
+    color: "#334155",
+    border: "1px solid #e2e8f0",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    fontSize: "13px",
+    fontWeight: 600,
+    maxWidth: "100%",
+  },
+
   mapBox: {
+    width: "100%",
+    overflow: "hidden",
+    borderRadius: "12px",
+    marginBottom: "0",
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+  },
+
+  liveMapBox: {
     width: "100%",
     overflow: "hidden",
     borderRadius: "15px",
     marginBottom: "20px",
-    border: "1px solid #e5e7eb",
+    border: "1px solid #bbf7d0",
+    background: "#f0fdf4",
+  },
+
+  liveMapHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "15px",
+    padding: "18px 20px",
+  },
+
+  mapTitle: {
+    color: "#111827",
+    margin: 0,
+    fontSize: "20px",
+    fontWeight: 700,
+  },
+
+  liveMapText: {
+    color: "#475569",
+    margin: "6px 0 0",
+    fontSize: "14px",
+  },
+
+  liveLocationBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "7px 12px",
+    borderRadius: "15px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  coordinatesBox: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "10px 20px",
+    padding: "14px 20px",
+    background: "#ffffff",
+    borderTop: "1px solid #bbf7d0",
+    color: "#334155",
+    fontSize: "14px",
   },
 
   map: {

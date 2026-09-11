@@ -7,6 +7,12 @@ type RouteData = {
   id?: number;
   shipmentId?: number;
   driverId?: number | null;
+
+  lastLatitude?: number | null;
+  lastLongitude?: number | null;
+  lastLocation?: string | null;
+  lastLocationAt?: string | null;
+
   origin?: string | null;
   destination?: string | null;
   waypoints?: string | null;
@@ -46,6 +52,7 @@ type DistanceData = {
   estimatedTimeMinutes?: number;
   distance?: string | number | { text?: string; value?: number };
   duration?: string | number | { text?: string; value?: number };
+
   rows?: Array<{
     elements?: Array<{
       distance?: {
@@ -58,6 +65,7 @@ type DistanceData = {
       };
     }>;
   }>;
+
   routes?: Array<{
     legs?: Array<{
       distance?: {
@@ -90,7 +98,9 @@ export default function MonitoringDetailsPage() {
   const [lastUpdated, setLastUpdated] = useState("");
   const [error, setError] = useState("");
 
-  const formatMinutes = (minutes: number | null | undefined) => {
+  const formatMinutes = (
+    minutes: number | null | undefined
+  ) => {
     if (
       minutes === null ||
       minutes === undefined ||
@@ -113,6 +123,63 @@ export default function MonitoringDetailsPage() {
     }
 
     return `${hours} hr ${remainingMinutes} min`;
+  };
+
+  const formatLocationTime = (
+    value: string | null | undefined
+  ) => {
+    if (!value) {
+      return "Not available";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleString();
+  };
+
+  const getLiveLocation = () => {
+    if (route?.lastLocation) {
+      return route.lastLocation;
+    }
+
+    if (
+      route?.lastLatitude !== null &&
+      route?.lastLatitude !== undefined &&
+      route?.lastLongitude !== null &&
+      route?.lastLongitude !== undefined
+    ) {
+      return `${Number(route.lastLatitude).toFixed(6)}, ${Number(
+        route.lastLongitude
+      ).toFixed(6)}`;
+    }
+
+    return "Location not available";
+  };
+
+  const getLatitude = () => {
+    if (
+      route?.lastLatitude !== null &&
+      route?.lastLatitude !== undefined
+    ) {
+      return Number(route.lastLatitude).toFixed(6);
+    }
+
+    return "N/A";
+  };
+
+  const getLongitude = () => {
+    if (
+      route?.lastLongitude !== null &&
+      route?.lastLongitude !== undefined
+    ) {
+      return Number(route.lastLongitude).toFixed(6);
+    }
+
+    return "N/A";
   };
 
   const parseDistanceResponse = (rawText: string) => {
@@ -509,6 +576,7 @@ export default function MonitoringDetailsPage() {
 
         if (latestRoute) {
           setRoute(latestRoute);
+
           await fetchRouteDistance(
             latestRoute,
             token
@@ -557,8 +625,6 @@ export default function MonitoringDetailsPage() {
           historyError
         );
 
-        // Do not break live monitoring if
-        // history endpoint temporarily fails.
         setRouteHistory([]);
       }
 
@@ -749,6 +815,12 @@ export default function MonitoringDetailsPage() {
   const currentStatus =
     shipment?.status?.toUpperCase() || "CREATED";
 
+  const hasLiveLocation =
+    route?.lastLatitude !== null &&
+    route?.lastLatitude !== undefined &&
+    route?.lastLongitude !== null &&
+    route?.lastLongitude !== undefined;
+
   return (
     <main style={styles.page}>
       <div style={styles.container}>
@@ -805,6 +877,100 @@ export default function MonitoringDetailsPage() {
                 {route.destination ||
                   "Not available"}
               </p>
+            </div>
+
+            {/* LIVE DRIVER LOCATION */}
+            <div style={styles.liveLocationBox}>
+              <div style={styles.liveLocationHeader}>
+                <div>
+                  <h2 style={styles.sectionTitle}>
+                    Live Driver Location
+                  </h2>
+
+                  <p style={styles.liveLocationSubtitle}>
+                    Latest location reported by the assigned
+                    logistics operator
+                  </p>
+                </div>
+
+                <span
+                  style={
+                    hasLiveLocation
+                      ? styles.locationOnlineBadge
+                      : styles.locationOfflineBadge
+                  }
+                >
+                  {hasLiveLocation
+                    ? "● Location Available"
+                    : "● Waiting for Location"}
+                </span>
+              </div>
+
+              <div style={styles.locationMain}>
+                <div style={styles.locationIcon}>
+                  📍
+                </div>
+
+                <div style={styles.locationMainContent}>
+                  <span style={styles.locationLabel}>
+                    Current Location
+                  </span>
+
+                  <strong style={styles.locationValue}>
+                    {getLiveLocation()}
+                  </strong>
+                </div>
+              </div>
+
+              <div style={styles.locationGrid}>
+                <div style={styles.locationDetail}>
+                  <span style={styles.locationDetailLabel}>
+                    Latitude
+                  </span>
+
+                  <strong style={styles.locationDetailValue}>
+                    {getLatitude()}
+                  </strong>
+                </div>
+
+                <div style={styles.locationDetail}>
+                  <span style={styles.locationDetailLabel}>
+                    Longitude
+                  </span>
+
+                  <strong style={styles.locationDetailValue}>
+                    {getLongitude()}
+                  </strong>
+                </div>
+
+                <div style={styles.locationDetail}>
+                  <span style={styles.locationDetailLabel}>
+                    Driver ID
+                  </span>
+
+                  <strong style={styles.locationDetailValue}>
+                    {getDriverId()}
+                  </strong>
+                </div>
+
+                <div style={styles.locationDetail}>
+                  <span style={styles.locationDetailLabel}>
+                    Last Location Update
+                  </span>
+
+                  <strong style={styles.locationDetailValue}>
+                    {formatLocationTime(
+                      route.lastLocationAt
+                    )}
+                  </strong>
+                </div>
+              </div>
+
+              <div style={styles.locationNote}>
+                The monitoring page automatically refreshes
+                every 10 seconds to receive the latest driver
+                location.
+              </div>
             </div>
 
             <div style={styles.infoGrid}>
@@ -977,7 +1143,8 @@ export default function MonitoringDetailsPage() {
                   </h2>
 
                   <p style={styles.routeHistorySubtitle}>
-                    Complete route history for this shipment
+                    Complete route history for this
+                    shipment
                   </p>
                 </div>
 
@@ -1321,6 +1488,125 @@ const styles: Record<
     color: "#1e3a8a",
     margin: "9px 0",
     fontSize: "15px",
+  },
+
+  /* LIVE LOCATION */
+
+  liveLocationBox: {
+    background: "#f0fdf4",
+    border: "1px solid #bbf7d0",
+    padding: "25px",
+    borderRadius: "15px",
+    marginBottom: "20px",
+  },
+
+  liveLocationHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: "20px",
+    marginBottom: "22px",
+  },
+
+  liveLocationSubtitle: {
+    color: "#64748b",
+    fontSize: "14px",
+    margin: "7px 0 0",
+  },
+
+  locationOnlineBadge: {
+    background: "#dcfce7",
+    color: "#166534",
+    padding: "7px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  locationOfflineBadge: {
+    background: "#fef3c7",
+    color: "#92400e",
+    padding: "7px 12px",
+    borderRadius: "20px",
+    fontSize: "12px",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+
+  locationMain: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    background: "#ffffff",
+    borderRadius: "12px",
+    padding: "18px",
+    marginBottom: "15px",
+  },
+
+  locationIcon: {
+    fontSize: "30px",
+    width: "50px",
+    height: "50px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#dcfce7",
+    borderRadius: "50%",
+    flexShrink: 0,
+  },
+
+  locationMainContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    minWidth: 0,
+  },
+
+  locationLabel: {
+    color: "#64748b",
+    fontSize: "13px",
+    fontWeight: 600,
+  },
+
+  locationValue: {
+    color: "#111827",
+    fontSize: "18px",
+    wordBreak: "break-word",
+  },
+
+  locationGrid: {
+    display: "grid",
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+  },
+
+  locationDetail: {
+    background: "#ffffff",
+    borderRadius: "10px",
+    padding: "14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+  },
+
+  locationDetailLabel: {
+    color: "#64748b",
+    fontSize: "12px",
+  },
+
+  locationDetailValue: {
+    color: "#111827",
+    fontSize: "14px",
+    wordBreak: "break-word",
+  },
+
+  locationNote: {
+    marginTop: "14px",
+    color: "#166534",
+    fontSize: "12px",
+    lineHeight: 1.5,
   },
 
   infoGrid: {

@@ -26,6 +26,15 @@ interface UserProfile {
   role?: string;
 }
 
+interface Shipment {
+  id: number;
+  trackingNumber?: string;
+  status?: string;
+  origin?: string;
+  destination?: string;
+  assignedOperatorId?: number | null;
+}
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -44,6 +53,18 @@ export default function HomePage() {
   const [profile, setProfile] =
     useState<UserProfile | null>(null);
 
+  const [assignedShipments, setAssignedShipments] =
+    useState<Shipment[]>([]);
+
+  const [loadingShipments, setLoadingShipments] =
+    useState(false);
+
+  const [updatingShipmentId, setUpdatingShipmentId] =
+    useState<number | null>(null);
+
+  const [selectedStatuses, setSelectedStatuses] =
+    useState<Record<number, string>>({});
+
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -54,6 +75,26 @@ export default function HomePage() {
 
     loadProfile();
     loadNotifications();
+
+    const storedUser = localStorage.getItem("user");
+
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+
+        if (
+          user.role?.toUpperCase() ===
+          "LOGISTICS_OPERATOR"
+        ) {
+          loadAssignedShipments();
+        }
+      } catch (error) {
+        console.error(
+          "Error checking user role:",
+          error
+        );
+      }
+    }
   }, [router]);
 
   const loadProfile = () => {
@@ -67,7 +108,10 @@ export default function HomePage() {
       const user = JSON.parse(storedUser);
       setProfile(user);
     } catch (error) {
-      console.error("Error loading profile:", error);
+      console.error(
+        "Error loading profile:",
+        error
+      );
     }
   };
 
@@ -118,6 +162,151 @@ export default function HomePage() {
       );
     } finally {
       setLoadingNotifications(false);
+    }
+  };
+
+  const loadAssignedShipments = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      setLoadingShipments(true);
+
+      const response = await fetch(
+        "http://localhost:8080/api/shipments",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error(
+          "Failed to fetch assigned shipments:",
+          response.status
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      setAssignedShipments(
+        Array.isArray(data) ? data : []
+      );
+    } catch (error) {
+      console.error(
+        "Error loading assigned shipments:",
+        error
+      );
+    } finally {
+      setLoadingShipments(false);
+    }
+  };
+
+  const updateShipmentStatus = async (
+    shipmentId: number
+  ) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert(
+        "Session expired. Please login again."
+      );
+      router.replace("/login");
+      return;
+    }
+
+    const newStatus =
+      selectedStatuses[shipmentId];
+
+    if (!newStatus) {
+      alert(
+        "Please select a shipment status."
+      );
+      return;
+    }
+
+    try {
+      setUpdatingShipmentId(shipmentId);
+
+      const response = await fetch(
+        `http://localhost:8080/api/shipments/${shipmentId}/status?status=${encodeURIComponent(
+          newStatus
+        )}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const responseText =
+        await response.text();
+
+      if (!response.ok) {
+        console.error(
+          "Status update failed:",
+          response.status,
+          responseText
+        );
+
+        alert(
+          responseText ||
+            "Failed to update shipment status."
+        );
+
+        return;
+      }
+
+      const updatedShipment =
+        JSON.parse(responseText);
+
+      setAssignedShipments(
+        (currentShipments) =>
+          currentShipments.map(
+            (shipment) =>
+              shipment.id === shipmentId
+                ? {
+                    ...shipment,
+                    status:
+                      updatedShipment.status ||
+                      newStatus,
+                  }
+                : shipment
+          )
+      );
+
+      setSelectedStatuses(
+        (currentStatuses) => ({
+          ...currentStatuses,
+          [shipmentId]:
+            updatedShipment.status ||
+            newStatus,
+        })
+      );
+
+      alert(
+        `Shipment #${shipmentId} status updated to ${newStatus}.`
+      );
+    } catch (error) {
+      console.error(
+        "Error updating shipment status:",
+        error
+      );
+
+      alert(
+        "Unable to connect to the server."
+      );
+    } finally {
+      setUpdatingShipmentId(null);
     }
   };
 
@@ -200,28 +389,432 @@ export default function HomePage() {
     "User";
 
   const displayEmail =
-    profile?.email || "Email not available";
+    profile?.email ||
+    "Email not available";
 
   const displayRole =
-    profile?.role || "Role not available";
+    profile?.role ||
+    "Role not available";
 
   /*
-   * POD verification is available only for:
-   * SUPPORT_AGENT
-   * ADMINISTRATOR
+   * =====================================================
+   * ROLE BASED ACCESS
+   * =====================================================
    */
+
+  const normalizedRole =
+    displayRole.toUpperCase();
+
+  const isAdmin =
+    normalizedRole === "ADMINISTRATOR";
+
+  const isCustomer =
+    normalizedRole === "CUSTOMER";
+
+  const isBusinessClient =
+    normalizedRole === "BUSINESS_CLIENT";
+
+  const isLogisticsOperator =
+    normalizedRole === "LOGISTICS_OPERATOR";
+
+  const isSupportAgent =
+    normalizedRole === "SUPPORT_AGENT";
+
+  /*
+   * Customer + Business Client + Admin
+   * can create/manage shipments.
+   *
+   * Logistics Operator must NOT get
+   * shipment creation access.
+   */
+
+  const canCreateShipment =
+    isAdmin ||
+    isCustomer ||
+    isBusinessClient;
+
+  /*
+   * Shipment tracking.
+   */
+
+  const canTrackShipment =
+    isAdmin ||
+    isCustomer ||
+    isBusinessClient ||
+    isLogisticsOperator ||
+    isSupportAgent;
+
+  /*
+   * Live monitoring.
+   */
+
+  const canLiveMonitor =
+    isAdmin ||
+    isCustomer ||
+    isBusinessClient ||
+    isLogisticsOperator;
+
+  /*
+   * ETA prediction.
+   */
+
+  const canViewETA =
+    isAdmin ||
+    isCustomer ||
+    isBusinessClient ||
+    isLogisticsOperator;
+
+  /*
+   * POD submission.
+   *
+   * Logistics Operator and Admin only.
+   */
+
+  const canSubmitPOD =
+    isAdmin ||
+    isLogisticsOperator;
+
+  /*
+   * POD verification.
+   *
+   * Support Agent and Admin only.
+   */
+
   const canVerifyPOD =
-    displayRole.toUpperCase() === "SUPPORT_AGENT" ||
-    displayRole.toUpperCase() === "ADMINISTRATOR";
+    isSupportAgent ||
+    isAdmin;
+
+  const navigateFromSidebar = (path: string) => {
+    setShowNotifications(false);
+    setShowProfile(false);
+    router.push(path);
+  };
 
   return (
-    <main className="dashboard-page">
+    <main
+      className="dashboard-page"
+      style={{
+        minHeight: "100vh",
+        paddingLeft: "235px",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* ========================= */}
+      {/* ROLE-BASED SIDE NAVIGATION */}
+      {/* ========================= */}
+
+      <aside
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: "235px",
+          background: "#0b1220",
+          color: "#ffffff",
+          padding: "22px 14px",
+          boxSizing: "border-box",
+          zIndex: 1200,
+          overflowY: "auto",
+          boxShadow: "4px 0 22px rgba(15, 23, 42, 0.14)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "4px 10px 22px",
+            borderBottom: "1px solid rgba(255,255,255,0.10)",
+            marginBottom: "18px",
+          }}
+        >
+          <div
+            style={{
+              width: "36px",
+              height: "36px",
+              borderRadius: "10px",
+              background: "#2563eb",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "19px",
+              boxShadow: "0 6px 14px rgba(37, 99, 235, 0.28)",
+            }}
+          >
+            S
+          </div>
+
+          <div>
+            <div
+              style={{
+                fontSize: "20px",
+                fontWeight: 800,
+                lineHeight: 1.1,
+              }}
+            >
+              ShipTrack
+            </div>
+            <div
+              style={{
+                fontSize: "10px",
+                color: "#94a3b8",
+                marginTop: "4px",
+              }}
+            >
+              Delivery Visibility
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: "11px",
+            fontWeight: 700,
+            color: "#94a3b8",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            padding: "0 10px 9px",
+          }}
+        >
+          Dashboard
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          {canCreateShipment && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/shipments")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "#1e3a8a",
+                color: "#ffffff",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              📦 <span style={{ marginLeft: "7px" }}>Shipments</span>
+            </button>
+          )}
+
+          {isLogisticsOperator && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowNotifications(false);
+                setShowProfile(false);
+                window.scrollTo({
+                  top: document.body.scrollHeight,
+                  behavior: "smooth",
+                });
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              🚚 <span style={{ marginLeft: "7px" }}>Assigned Shipments</span>
+            </button>
+          )}
+
+          {canTrackShipment && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/tracking")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              📍 <span style={{ marginLeft: "7px" }}>Track Shipment</span>
+            </button>
+          )}
+
+          {canLiveMonitor && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/monitoring")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              🚚 <span style={{ marginLeft: "7px" }}>Live Monitoring</span>
+            </button>
+          )}
+
+          {canViewETA && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/eta")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ⏱️ <span style={{ marginLeft: "7px" }}>ETA Prediction</span>
+            </button>
+          )}
+
+          {(isCustomer || isBusinessClient || isAdmin) && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/analytics")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              📊 <span style={{ marginLeft: "7px" }}>Analytics Dashboard</span>
+            </button>
+          )}
+
+          {(isCustomer || isBusinessClient || isAdmin) && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/reports")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              📄 <span style={{ marginLeft: "7px" }}>Reports & Export</span>
+            </button>
+          )}
+
+          {canSubmitPOD && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/pod")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ✅ <span style={{ marginLeft: "7px" }}>Complete Delivery</span>
+            </button>
+          )}
+
+          {canVerifyPOD && (
+            <button
+              type="button"
+              onClick={() => navigateFromSidebar("/pod/verification")}
+              style={{
+                width: "100%",
+                border: "none",
+                borderRadius: "9px",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "11px 12px",
+                textAlign: "left",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              🔍 <span style={{ marginLeft: "7px" }}>POD Verification</span>
+            </button>
+          )}
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            left: "14px",
+            right: "14px",
+            bottom: "18px",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: "10px",
+            padding: "10px 12px",
+            background: "rgba(255,255,255,0.035)",
+            color: "#94a3b8",
+            fontSize: "11px",
+          }}
+        >
+          Role: {displayRole}
+        </div>
+      </aside>
+
+      {/* ========================= */}
+      {/* TOP NAVIGATION */}
+      {/* ========================= */}
+
 
       {/* ========================= */}
       {/* Navigation */}
       {/* ========================= */}
 
-      <nav className="dashboard-nav">
+      <nav
+        className="dashboard-nav"
+        style={{
+          marginLeft: "0",
+          width: "100%",
+          boxSizing: "border-box",
+          paddingLeft: "105px",
+          paddingRight: "32px",
+        }}
+      >
 
         <div className="dashboard-brand">
           ShipTrack
@@ -295,9 +888,7 @@ export default function HomePage() {
               )}
             </button>
 
-            {/* ========================= */}
             {/* Notification Dropdown */}
-            {/* ========================= */}
 
             {showNotifications && (
               <div
@@ -495,9 +1086,7 @@ export default function HomePage() {
 
             </button>
 
-            {/* ========================= */}
             {/* Profile Dropdown */}
-            {/* ========================= */}
 
             {showProfile && (
               <div
@@ -517,8 +1106,6 @@ export default function HomePage() {
                   color: "#111827",
                 }}
               >
-
-                {/* Profile Header */}
 
                 <div
                   style={{
@@ -600,8 +1187,6 @@ export default function HomePage() {
 
                 </div>
 
-                {/* Profile Details */}
-
                 <div
                   style={{
                     padding: "16px 20px",
@@ -668,8 +1253,6 @@ export default function HomePage() {
 
                 </div>
 
-                {/* Logout */}
-
                 <div
                   style={{
                     borderTop:
@@ -729,102 +1312,101 @@ export default function HomePage() {
 
         <div className="dashboard-grid">
 
-          {/* ========================= */}
           {/* 1. SHIPMENTS */}
-          {/* ========================= */}
 
-          <button
-            type="button"
-            className="dashboard-card"
-            onClick={() =>
-              router.push("/shipments")
-            }
-          >
-            <span>📦</span>
+          {canCreateShipment && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() =>
+                router.push("/shipments")
+              }
+            >
+              <span>📦</span>
 
-            <h2>Shipments</h2>
+              <h2>Shipments</h2>
 
-            <p>
-              Create and manage your shipments.
-            </p>
-          </button>
+              <p>
+                Create and track your shipments.
+              </p>
+            </button>
+          )}
 
-          {/* ========================= */}
           {/* 2. TRACK SHIPMENT */}
-          {/* ========================= */}
 
-          <button
-            type="button"
-            className="dashboard-card"
-            onClick={() =>
-              router.push("/tracking")
-            }
-          >
-            <span>📍</span>
+          {canTrackShipment && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() =>
+                router.push("/tracking")
+              }
+            >
+              <span>📍</span>
 
-            <h2>Track Shipment</h2>
+              <h2>Track Shipment</h2>
 
-            <p>
-              View live shipment location and route.
-            </p>
-          </button>
+              <p>
+                View live shipment location and route.
+              </p>
+            </button>
+          )}
 
-          {/* ========================= */}
           {/* 3. LIVE MONITORING */}
-          {/* ========================= */}
 
-          <button
-            type="button"
-            className="dashboard-card"
-            onClick={() =>
-              router.push("/monitoring")
-            }
-          >
-            <span>🚚</span>
+          {canLiveMonitor && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() =>
+                router.push("/monitoring")
+              }
+            >
+              <span>🚚</span>
 
-            <h2>Live Monitoring</h2>
+              <h2>Live Monitoring</h2>
 
-            <p>
-              Monitor delivery progress and route
-              details in real time.
-            </p>
-          </button>
+              <p>
+                Monitor delivery progress and route
+                details in real time.
+              </p>
+            </button>
+          )}
 
-          {/* ========================= */}
           {/* 4. ETA PREDICTION */}
-          {/* ========================= */}
 
-          <button
-            type="button"
-            className="dashboard-card"
-            onClick={() =>
-              router.push("/eta")
-            }
-          >
-            <span>⏱️</span>
+          {canViewETA && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() =>
+                router.push("/eta")
+              }
+            >
+              <span>⏱️</span>
 
-            <h2>ETA Prediction</h2>
+              <h2>ETA Prediction</h2>
 
-            <p>
-              View predicted delivery time and delay
-              risk.
-            </p>
-          </button>
+              <p>
+                View predicted delivery time and delay
+                risk.
+              </p>
+            </button>
+          )}
 
-          {/* ========================= */}
-          {/* 5. ANALYTICS DASHBOARD */}
-          {/* CUSTOMER / BUSINESS / ADMIN */}
-          {/* ========================= */}
+          {/* 5. ANALYTICS */}
 
           {(
-            displayRole.toUpperCase() === "CUSTOMER" ||
-            displayRole.toUpperCase() === "BUSINESS_CLIENT" ||
-            displayRole.toUpperCase() === "ADMINISTRATOR"
+            isCustomer ||
+            isBusinessClient ||
+            isAdmin
           ) && (
             <button
               type="button"
               className="dashboard-card"
-              onClick={() => router.push("/analytics")}
+              onClick={() =>
+                router.push("/analytics")
+              }
             >
               <span>📊</span>
 
@@ -837,16 +1419,19 @@ export default function HomePage() {
             </button>
           )}
 
-          {/* Reports & Export */}
+          {/* 6. REPORTS */}
+
           {(
-            displayRole.toUpperCase() === "CUSTOMER" ||
-            displayRole.toUpperCase() === "BUSINESS_CLIENT" ||
-            displayRole.toUpperCase() === "ADMINISTRATOR"
+            isCustomer ||
+            isBusinessClient ||
+            isAdmin
           ) && (
             <button
               type="button"
               className="dashboard-card"
-              onClick={() => router.push("/reports")}
+              onClick={() =>
+                router.push("/reports")
+              }
             >
               <span>📄</span>
 
@@ -859,28 +1444,28 @@ export default function HomePage() {
             </button>
           )}
 
-          {/* Complete Delivery */}
-          <button
-            type="button"
-            className="dashboard-card"
-            onClick={() =>
-              router.push("/pod")
-            }
-          >
-            <span>✅</span>
+          {/* 7. COMPLETE DELIVERY */}
 
-            <h2>Complete Delivery</h2>
+          {canSubmitPOD && (
+            <button
+              type="button"
+              className="dashboard-card"
+              onClick={() =>
+                router.push("/pod")
+              }
+            >
+              <span>✅</span>
 
-            <p>
-              Submit proof of delivery with recipient
-              name, signature, photo and delivery notes.
-            </p>
-          </button>
+              <h2>Complete Delivery</h2>
 
-          {/* ========================= */}
-          {/* 6. POD VERIFICATION */}
-          {/* SUPPORT AGENT / ADMIN ONLY */}
-          {/* ========================= */}
+              <p>
+                Submit proof of delivery with recipient
+                name, signature, photo and delivery notes.
+              </p>
+            </button>
+          )}
+
+          {/* 8. POD VERIFICATION */}
 
           {canVerifyPOD && (
             <button
@@ -902,6 +1487,361 @@ export default function HomePage() {
           )}
 
         </div>
+
+        {/* ================================================= */}
+        {/* LOGISTICS OPERATOR - ASSIGNED SHIPMENTS */}
+        {/* ================================================= */}
+
+        {isLogisticsOperator && (
+          <section
+            style={{
+              marginTop: "30px",
+              background: "#ffffff",
+              borderRadius: "16px",
+              padding: "25px",
+              boxShadow:
+                "0 8px 25px rgba(15, 23, 42, 0.08)",
+            }}
+          >
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
+
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    color: "#111827",
+                    fontSize: "22px",
+                  }}
+                >
+                  Assigned Shipments
+                </h2>
+
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "#64748b",
+                    fontSize: "14px",
+                  }}
+                >
+                  Shipments currently assigned to you.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadAssignedShipments}
+                disabled={loadingShipments}
+                style={{
+                  border: "1px solid #d1d5db",
+                  background: "#ffffff",
+                  borderRadius: "8px",
+                  padding: "9px 14px",
+                  cursor: loadingShipments
+                    ? "not-allowed"
+                    : "pointer",
+                  fontWeight: 600,
+                  color: "#374151",
+                }}
+              >
+                {loadingShipments
+                  ? "Refreshing..."
+                  : "↻ Refresh"}
+              </button>
+
+            </div>
+
+            {loadingShipments ? (
+              <div
+                style={{
+                  padding: "30px",
+                  textAlign: "center",
+                  color: "#64748b",
+                }}
+              >
+                Loading assigned shipments...
+              </div>
+            ) : assignedShipments.length === 0 ? (
+              <div
+                style={{
+                  padding: "30px",
+                  textAlign: "center",
+                  color: "#64748b",
+                  background: "#f8fafc",
+                  borderRadius: "10px",
+                }}
+              >
+                No shipments are currently assigned
+                to you.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+
+                {assignedShipments.map(
+                  (shipment) => {
+                    const isDelivered =
+                      shipment.status?.toUpperCase() === "DELIVERED";
+
+                    return (
+                      <div
+                      key={shipment.id}
+                      style={{
+                        border:
+                          "1px solid #e5e7eb",
+                        borderRadius: "12px",
+                        padding: "18px",
+                        background: "#f8fafc",
+                      }}
+                    >
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent:
+                            "space-between",
+                          gap: "10px",
+                          marginBottom: "14px",
+                        }}
+                      >
+
+                        <strong
+                          style={{
+                            color: "#111827",
+                            fontSize: "16px",
+                          }}
+                        >
+                          Shipment #{shipment.id}
+                        </strong>
+
+                        <span
+                          style={{
+                            background: "#e0ecff",
+                            color: "#1d4ed8",
+                            padding: "5px 9px",
+                            borderRadius: "20px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {shipment.status ||
+                            "UNKNOWN"}
+                        </span>
+
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "7px 0",
+                          color: "#475569",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <strong>
+                          Tracking:
+                        </strong>{" "}
+                        {shipment.trackingNumber ||
+                          "N/A"}
+                      </p>
+
+                      <p
+                        style={{
+                          margin: "7px 0",
+                          color: "#475569",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <strong>
+                          From:
+                        </strong>{" "}
+                        {shipment.origin ||
+                          "N/A"}
+                      </p>
+
+                      <p
+                        style={{
+                          margin: "7px 0",
+                          color: "#475569",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <strong>
+                          To:
+                        </strong>{" "}
+                        {shipment.destination ||
+                          "N/A"}
+                      </p>
+
+                      {/* ========================= */}
+                      {/* UPDATE STATUS */}
+                      {/* ========================= */}
+
+                      <div
+                        style={{
+                          marginTop: "16px",
+                        }}
+                      >
+
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "13px",
+                            fontWeight: 600,
+                            color: "#374151",
+                            marginBottom: "7px",
+                          }}
+                        >
+                          Update Shipment Status
+                        </label>
+
+                        <select
+                          value={
+                            selectedStatuses[
+                              shipment.id
+                            ] ||
+                            shipment.status ||
+                            "CREATED"
+                          }
+                          disabled={isDelivered}
+                          onChange={(e) =>
+                            setSelectedStatuses(
+                              (current) => ({
+                                ...current,
+                                [shipment.id]:
+                                  e.target.value,
+                              })
+                            )
+                          }
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            padding: "10px 12px",
+                            border:
+                              "1px solid #d1d5db",
+                            borderRadius: "9px",
+                            background:
+                              "#ffffff",
+                            color: "#111827",
+                            fontSize: "14px",
+                            cursor: "pointer",
+                          }}
+                        >
+
+                          <option value="CREATED">
+                            CREATED
+                          </option>
+
+                          <option value="PICKED_UP">
+                            PICKED_UP
+                          </option>
+
+                          <option value="IN_TRANSIT">
+                            IN_TRANSIT
+                          </option>
+
+                          <option value="OUT_FOR_DELIVERY">
+                            OUT_FOR_DELIVERY
+                          </option>
+
+                          <option value="DELIVERED">
+                            DELIVERED
+                          </option>
+
+                        </select>
+
+                        <button
+                          type="button"
+                          disabled={
+                            isDelivered ||
+                            updatingShipmentId === shipment.id
+                          }
+                          onClick={() =>
+                            updateShipmentStatus(
+                              shipment.id
+                            )
+                          }
+                          style={{
+                            width: "100%",
+                            marginTop: "9px",
+                            padding: "11px",
+                            border: "none",
+                            borderRadius: "9px",
+                            background:
+                              isDelivered
+                                ? "#94a3b8"
+                                : updatingShipmentId === shipment.id
+                                ? "#93c5fd"
+                                : "#2563eb",
+                            color: "#ffffff",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            cursor:
+                              isDelivered || updatingShipmentId === shipment.id
+                                ? "not-allowed"
+                                : "pointer",
+                          }}
+                        >
+                          {isDelivered
+                            ? "Status Locked"
+                            : updatingShipmentId === shipment.id
+                            ? "Updating..."
+                            : "Update Status"}
+                        </button>
+
+                      </div>
+
+                      {/* ========================= */}
+                      {/* VIEW SHIPMENT */}
+                      {/* ========================= */}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/tracking/${shipment.id}`
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          marginTop: "9px",
+                          padding: "11px",
+                          border:
+                            "1px solid #2563eb",
+                          borderRadius: "9px",
+                          background:
+                            "#ffffff",
+                          color: "#2563eb",
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        View Shipment
+                      </button>
+
+                      </div>
+                    );
+                  }
+                )}
+
+              </div>
+            )}
+
+          </section>
+        )}
 
       </section>
 
