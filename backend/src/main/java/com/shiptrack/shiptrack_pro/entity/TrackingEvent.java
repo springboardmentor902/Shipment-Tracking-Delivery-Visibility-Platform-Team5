@@ -1,0 +1,47 @@
+package com.shiptrack.shiptrack_pro.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+/** One row per TRACKING_EVENTS record - an append-only log of shipment status/location changes. */
+@Entity
+@Table(name = "tracking_events")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class TrackingEvent {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "shipment_id", nullable = false)
+    private Long shipmentId;
+
+    @Column(name = "updated_by")
+    private Long updatedBy;
+
+    private String status;
+
+    private String location;
+
+    private BigDecimal latitude;
+
+    private BigDecimal longitude;
+
+    private String notes;
+
+    @Column(name = "event_timestamp")
+    private LocalDateTime eventTimestamp;
+
+    @PrePersist
+    public void prePersist() {
+        if (eventTimestamp == null) {
+            eventTimestamp = LocalDateTime.now();
+        }
+    }
+}
