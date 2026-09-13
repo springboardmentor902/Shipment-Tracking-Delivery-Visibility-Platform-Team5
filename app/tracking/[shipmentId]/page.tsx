@@ -683,8 +683,8 @@ export default function TrackingPage() {
                 <div style={styles.liveMapBox}>
                   <div style={styles.liveMapHeader}>
                     <div>
-                      <h2 style={styles.mapTitle}>
-                        Live Driver Location
+                      <h2 style={styles.liveMapTitle}>
+                            Live Driver Location
                       </h2>
                       <p style={styles.liveMapText}>
                         📍 Current driver position is shown below.
@@ -1069,12 +1069,12 @@ const styles: Record<
     padding: "18px 20px",
   },
 
-  mapTitle: {
-    color: "#111827",
-    margin: 0,
-    fontSize: "20px",
-    fontWeight: 700,
-  },
+ liveMapTitle: {
+  color: "#111827",
+  margin: 0,
+  fontSize: "20px",
+  fontWeight: 700,
+},
 
   liveMapText: {
     color: "#475569",

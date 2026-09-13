@@ -56,6 +56,12 @@ export default function HomePage() {
   const [assignedShipments, setAssignedShipments] =
     useState<Shipment[]>([]);
 
+  const [adminShipments, setAdminShipments] =
+    useState<Shipment[]>([]);
+
+  const [loadingAdminShipments, setLoadingAdminShipments] =
+    useState(false);
+
   const [loadingShipments, setLoadingShipments] =
     useState(false);
 
@@ -82,11 +88,14 @@ export default function HomePage() {
       try {
         const user = JSON.parse(storedUser);
 
-        if (
-          user.role?.toUpperCase() ===
-          "LOGISTICS_OPERATOR"
-        ) {
+        const role = user.role?.toUpperCase();
+
+        if (role === "LOGISTICS_OPERATOR") {
           loadAssignedShipments();
+        }
+
+        if (role === "ADMINISTRATOR") {
+          loadAdminShipments();
         }
       } catch (error) {
         console.error(
@@ -165,6 +174,95 @@ export default function HomePage() {
     }
   };
 
+  const loadAdminShipments = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      return;
+    }
+
+    try {
+      setLoadingAdminShipments(true);
+
+      const response = await fetch(
+        "http://localhost:8080/api/shipments",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error(
+          "Failed to fetch admin shipments:",
+          response.status
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      const shipments = Array.isArray(data) ? data : [];
+
+      const shipmentsWithRoutes = await Promise.all(
+        shipments.map(async (shipment: Shipment) => {
+          try {
+            const routeResponse = await fetch(
+              `http://localhost:8080/api/routes/${shipment.id}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                cache: "no-store",
+              }
+            );
+
+            if (!routeResponse.ok) {
+              return shipment;
+            }
+
+            const routeText = await routeResponse.text();
+
+            if (!routeText) {
+              return shipment;
+            }
+
+            const routeData = JSON.parse(routeText);
+            const route = Array.isArray(routeData)
+              ? routeData[0]
+              : routeData;
+
+            return {
+              ...shipment,
+              origin: route?.origin || shipment.origin,
+              destination: route?.destination || shipment.destination,
+            };
+          } catch (routeError) {
+            console.error(
+              `Error loading route for shipment ${shipment.id}:`,
+              routeError
+            );
+            return shipment;
+          }
+        })
+      );
+
+      setAdminShipments(shipmentsWithRoutes);
+    } catch (error) {
+      console.error(
+        "Error loading admin shipments:",
+        error
+      );
+    } finally {
+      setLoadingAdminShipments(false);
+    }
+  };
+
   const loadAssignedShipments = async () => {
     const token = localStorage.getItem("token");
 
@@ -196,9 +294,54 @@ export default function HomePage() {
 
       const data = await response.json();
 
-      setAssignedShipments(
-        Array.isArray(data) ? data : []
+      const shipments = Array.isArray(data) ? data : [];
+
+      const shipmentsWithRoutes = await Promise.all(
+        shipments.map(async (shipment: Shipment) => {
+          try {
+            const routeResponse = await fetch(
+              `http://localhost:8080/api/routes/${shipment.id}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                cache: "no-store",
+              }
+            );
+
+            if (!routeResponse.ok) {
+              return shipment;
+            }
+
+            const routeText = await routeResponse.text();
+
+            if (!routeText) {
+              return shipment;
+            }
+
+            const routeData = JSON.parse(routeText);
+            const route = Array.isArray(routeData)
+              ? routeData[0]
+              : routeData;
+
+            return {
+              ...shipment,
+              origin: route?.origin || shipment.origin,
+              destination: route?.destination || shipment.destination,
+            };
+          } catch (routeError) {
+            console.error(
+              `Error loading route for shipment ${shipment.id}:`,
+              routeError
+            );
+            return shipment;
+          }
+        })
       );
+
+      setAssignedShipments(shipmentsWithRoutes);
     } catch (error) {
       console.error(
         "Error loading assigned shipments:",
@@ -567,6 +710,119 @@ export default function HomePage() {
           </div>
         </div>
 
+        {isAdmin ? (
+          <>
+            <div
+              style={{
+                padding: "0 10px 9px",
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#94a3b8",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Operations
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              {[
+                ["▦", "Dashboard", "#"],
+                ["📦", "Shipments", "/shipments"],
+                ["📍", "Track Shipment", "/tracking"],
+                ["🚚", "Live Monitoring", "/monitoring"],
+                ["⏱", "ETA Prediction", "/eta"],
+              ].map(([icon, label, path], index) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => {
+                    if (path === "#") {
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      return;
+                    }
+                    navigateFromSidebar(path);
+                  }}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderRadius: "9px",
+                    background: index === 0
+                      ? "linear-gradient(90deg, #1d4ed8, #2563eb)"
+                      : "transparent",
+                    color: index === 0 ? "#ffffff" : "#cbd5e1",
+                    padding: "11px 12px",
+                    textAlign: "left",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: index === 0
+                      ? "0 6px 14px rgba(37, 99, 235, 0.22)"
+                      : "none",
+                  }}
+                >
+                  <span>{icon}</span>
+                  <span style={{ marginLeft: "8px" }}>{label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div
+              style={{
+                padding: "22px 10px 9px",
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#94a3b8",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              Insights & Administration
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              {[
+                ["📊", "Analytics Dashboard", "/analytics"],
+                ["📄", "Reports & Export", "/reports"],
+                                ["🔍", "POD Verification", "/pod/verification"],
+              ].map(([icon, label, path]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => navigateFromSidebar(path)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    borderRadius: "9px",
+                    background: "transparent",
+                    color: "#cbd5e1",
+                    padding: "11px 12px",
+                    textAlign: "left",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>{icon}</span>
+                  <span style={{ marginLeft: "8px" }}>{label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+        <>
         <div
           style={{
             fontSize: "11px",
@@ -777,8 +1033,8 @@ export default function HomePage() {
             </button>
           )}
         </div>
-
-        <div
+        </>
+        )}        <div
           style={{
             position: "absolute",
             left: "14px",
@@ -1297,196 +1553,758 @@ export default function HomePage() {
 
       <section className="dashboard-content">
 
-        <div className="dashboard-header">
-
-          <h1>
-            Welcome to ShipTrack
-          </h1>
-
-          <p>
-            Manage shipments, monitor deliveries and
-            track shipments in real time.
-          </p>
-
-        </div>
-
-        <div className="dashboard-grid">
-
-          {/* 1. SHIPMENTS */}
-
-          {canCreateShipment && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/shipments")
-              }
+        {isAdmin ? (
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "20px",
+                marginBottom: "26px",
+                flexWrap: "wrap",
+              }}
             >
-              <span>📦</span>
+              <div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    background: "#eff6ff",
+                    color: "#1d4ed8",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                  }}
+                >
+                  <span>●</span>
+                  ADMINISTRATOR CONSOLE
+                </div>
 
-              <h2>Shipments</h2>
+                <h1
+                  style={{
+                    margin: 0,
+                    color: "#0f172a",
+                    fontSize: "32px",
+                    lineHeight: 1.15,
+                    fontWeight: 800,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  Operations Overview
+                </h1>
+
+                <p
+                  style={{
+                    margin: "9px 0 0",
+                    color: "#64748b",
+                    fontSize: "15px",
+                    lineHeight: 1.6,
+                    maxWidth: "650px",
+                  }}
+                >
+                  Monitor the shipment network, review delivery activity,
+                  and access operational controls from one place.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadAdminShipments}
+                disabled={loadingAdminShipments}
+                style={{
+                  border: "1px solid #dbe3ef",
+                  background: "#ffffff",
+                  color: "#1e293b",
+                  borderRadius: "10px",
+                  padding: "10px 15px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: loadingAdminShipments
+                    ? "not-allowed"
+                    : "pointer",
+                  boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
+                }}
+              >
+                {loadingAdminShipments ? "Refreshing..." : "↻ Refresh Overview"}
+              </button>
+            </div>
+
+            {(() => {
+              const total = adminShipments.length;
+              const delivered = adminShipments.filter(
+                (shipment) =>
+                  shipment.status?.toUpperCase() === "DELIVERED"
+              ).length;
+              const inTransit = adminShipments.filter((shipment) =>
+                ["PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(
+                  shipment.status?.toUpperCase() || ""
+                )
+              ).length;
+              const pending = Math.max(total - delivered - inTransit, 0);
+
+              const stats = [
+                {
+                  label: "Total Shipments",
+                  value: total,
+                  note: "Across the platform",
+                  icon: "📦",
+                },
+                {
+                  label: "In Transit",
+                  value: inTransit,
+                  note: "Currently moving",
+                  icon: "🚚",
+                },
+                {
+                  label: "Delivered",
+                  value: delivered,
+                  note: "Successfully completed",
+                  icon: "✓",
+                },
+                {
+                  label: "Pending",
+                  value: pending,
+                  note: "Awaiting movement",
+                  icon: "◷",
+                },
+              ];
+
+              return (
+                <>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(210px, 1fr))",
+                      gap: "16px",
+                      marginBottom: "28px",
+                    }}
+                  >
+                    {stats.map((stat) => (
+                      <div
+                        key={stat.label}
+                        style={{
+                          background: "#ffffff",
+                          border: "1px solid #e6ebf2",
+                          borderRadius: "16px",
+                          padding: "20px",
+                          boxShadow:
+                            "0 8px 24px rgba(15, 23, 42, 0.055)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: "18px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: "40px",
+                              height: "40px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: "11px",
+                              background: "#f1f5f9",
+                              fontSize: "19px",
+                            }}
+                          >
+                            {stat.icon}
+                          </span>
+                          <span
+                            style={{
+                              color: "#94a3b8",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                            }}
+                          >
+                            Live
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#0f172a",
+                            fontSize: "30px",
+                            fontWeight: 800,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {stat.value}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: "8px",
+                            color: "#334155",
+                            fontSize: "14px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {stat.label}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: "4px",
+                            color: "#94a3b8",
+                            fontSize: "12px",
+                          }}
+                        >
+                          {stat.note}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(0, 1.55fr) minmax(300px, 0.85fr)",
+                      gap: "20px",
+                      alignItems: "start",
+                    }}
+                  >
+                    <section
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #e6ebf2",
+                        borderRadius: "16px",
+                        padding: "22px",
+                        boxShadow:
+                          "0 8px 24px rgba(15, 23, 42, 0.055)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "12px",
+                          marginBottom: "18px",
+                        }}
+                      >
+                        <div>
+                          <h2
+                            style={{
+                              margin: 0,
+                              color: "#0f172a",
+                              fontSize: "19px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            Recent Shipments
+                          </h2>
+                          <p
+                            style={{
+                              margin: "5px 0 0",
+                              color: "#64748b",
+                              fontSize: "13px",
+                            }}
+                          >
+                            Latest shipment activity across the system.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => router.push("/shipments")}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            color: "#2563eb",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          View all →
+                        </button>
+                      </div>
+
+                      {loadingAdminShipments ? (
+                        <div
+                          style={{
+                            padding: "35px 15px",
+                            textAlign: "center",
+                            color: "#64748b",
+                            background: "#f8fafc",
+                            borderRadius: "12px",
+                          }}
+                        >
+                          Loading shipment activity...
+                        </div>
+                      ) : adminShipments.length === 0 ? (
+                        <div
+                          style={{
+                            padding: "35px 15px",
+                            textAlign: "center",
+                            color: "#64748b",
+                            background: "#f8fafc",
+                            borderRadius: "12px",
+                          }}
+                        >
+                          No shipment activity available.
+                        </div>
+                      ) : (
+                        <div style={{ overflowX: "auto" }}>
+                          <table
+                            style={{
+                              width: "100%",
+                              borderCollapse: "collapse",
+                              minWidth: "650px",
+                            }}
+                          >
+                            <thead>
+                              <tr>
+                                {[
+                                  "Shipment",
+                                  "Route",
+                                  "Status",
+                                  "Operator",
+                                ].map((heading) => (
+                                  <th
+                                    key={heading}
+                                    style={{
+                                      padding: "10px 12px",
+                                      textAlign: "left",
+                                      color: "#94a3b8",
+                                      fontSize: "11px",
+                                      fontWeight: 800,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.05em",
+                                      borderBottom:
+                                        "1px solid #eef2f7",
+                                    }}
+                                  >
+                                    {heading}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {adminShipments
+                                .slice()
+                                .reverse()
+                                .slice(0, 6)
+                                .map((shipment) => {
+                                  const status =
+                                    shipment.status?.toUpperCase() ||
+                                    "UNKNOWN";
+
+                                  const statusBackground =
+                                    status === "DELIVERED"
+                                      ? "#ecfdf3"
+                                      : status === "IN_TRANSIT" ||
+                                        status === "OUT_FOR_DELIVERY"
+                                      ? "#eff6ff"
+                                      : "#f8fafc";
+
+                                  const statusColor =
+                                    status === "DELIVERED"
+                                      ? "#15803d"
+                                      : status === "IN_TRANSIT" ||
+                                        status === "OUT_FOR_DELIVERY"
+                                      ? "#1d4ed8"
+                                      : "#475569";
+
+                                  return (
+                                    <tr key={shipment.id}>
+                                      <td
+                                        style={{
+                                          padding: "14px 12px",
+                                          borderBottom:
+                                            "1px solid #f1f5f9",
+                                        }}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            router.push(
+                                              `/tracking/${shipment.id}`
+                                            )
+                                          }
+                                          style={{
+                                            border: "none",
+                                            background: "transparent",
+                                            padding: 0,
+                                            color: "#0f172a",
+                                            fontWeight: 700,
+                                            cursor: "pointer",
+                                            textAlign: "left",
+                                          }}
+                                        >
+                                          #{shipment.id}
+                                          <span
+                                            style={{
+                                              display: "block",
+                                              marginTop: "3px",
+                                              color: "#64748b",
+                                              fontSize: "11px",
+                                              fontWeight: 500,
+                                            }}
+                                          >
+                                            {shipment.trackingNumber ||
+                                              "No tracking number"}
+                                          </span>
+                                        </button>
+                                      </td>
+
+                                      <td
+                                        style={{
+                                          padding: "14px 12px",
+                                          borderBottom:
+                                            "1px solid #f1f5f9",
+                                          color: "#475569",
+                                          fontSize: "12px",
+                                          lineHeight: 1.45,
+                                        }}
+                                      >
+                                        <div>
+                                          {shipment.origin || "N/A"}
+                                        </div>
+                                        <div style={{ color: "#94a3b8" }}>
+                                          ↓ {shipment.destination || "N/A"}
+                                        </div>
+                                      </td>
+
+                                      <td
+                                        style={{
+                                          padding: "14px 12px",
+                                          borderBottom:
+                                            "1px solid #f1f5f9",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            display: "inline-flex",
+                                            padding: "5px 9px",
+                                            borderRadius: "999px",
+                                            background:
+                                              statusBackground,
+                                            color: statusColor,
+                                            fontSize: "11px",
+                                            fontWeight: 800,
+                                          }}
+                                        >
+                                          {status.replaceAll("_", " ")}
+                                        </span>
+                                      </td>
+
+                                      <td
+                                        style={{
+                                          padding: "14px 12px",
+                                          borderBottom:
+                                            "1px solid #f1f5f9",
+                                          color: "#64748b",
+                                          fontSize: "12px",
+                                        }}
+                                      >
+                                        {shipment.assignedOperatorId
+                                          ? `Operator #${shipment.assignedOperatorId}`
+                                          : "Unassigned"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+
+                    <section
+                      style={{
+                        background: "#0f172a",
+                        borderRadius: "16px",
+                        padding: "22px",
+                        color: "#ffffff",
+                        boxShadow:
+                          "0 10px 28px rgba(15, 23, 42, 0.14)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          color: "#93c5fd",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.07em",
+                        }}
+                      >
+                        Control Center
+                      </div>
+
+                      <h2
+                        style={{
+                          margin: "8px 0 7px",
+                          fontSize: "20px",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Quick Actions
+                      </h2>
+
+                      <p
+                        style={{
+                          margin: "0 0 18px",
+                          color: "#94a3b8",
+                          fontSize: "13px",
+                          lineHeight: 1.55,
+                        }}
+                      >
+                        Access the tools most frequently used for platform
+                        operations and oversight.
+                      </p>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr",
+                          gap: "9px",
+                        }}
+                      >
+                        {[
+                          ["📦", "Shipments", "/shipments"],
+                          ["📍", "Tracking", "/tracking"],
+                          ["🚚", "Monitoring", "/monitoring"],
+                          ["⏱", "ETA", "/eta"],
+                          ["📊", "Analytics", "/analytics"],
+                          ["📄", "Reports", "/reports"],
+                                                    ["🔍", "POD Review", "/pod/verification"],
+                        ].map(([icon, label, path]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => router.push(path)}
+                            style={{
+                              border: "1px solid rgba(255,255,255,0.09)",
+                              background: "rgba(255,255,255,0.055)",
+                              color: "#e2e8f0",
+                              borderRadius: "10px",
+                              padding: "12px 10px",
+                              cursor: "pointer",
+                              textAlign: "left",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            <span style={{ marginRight: "6px" }}>{icon}</span>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
+                </>
+              );
+            })()}
+          </>
+        ) : (
+          <>
+            <div className="dashboard-header">
+
+              <h1>
+                Welcome to ShipTrack
+              </h1>
 
               <p>
-                Create and track your shipments.
+                Manage shipments, monitor deliveries and
+                track shipments in real time.
               </p>
-            </button>
-          )}
 
-          {/* 2. TRACK SHIPMENT */}
+            </div>
 
-          {canTrackShipment && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/tracking")
-              }
-            >
-              <span>📍</span>
+            <div className="dashboard-grid">
 
-              <h2>Track Shipment</h2>
+              {/* 1. SHIPMENTS */}
 
-              <p>
-                View live shipment location and route.
-              </p>
-            </button>
-          )}
+              {canCreateShipment && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/shipments")
+                  }
+                >
+                  <span>📦</span>
 
-          {/* 3. LIVE MONITORING */}
+                  <h2>Shipments</h2>
 
-          {canLiveMonitor && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/monitoring")
-              }
-            >
-              <span>🚚</span>
+                  <p>
+                    Create and track your shipments.
+                  </p>
+                </button>
+              )}
 
-              <h2>Live Monitoring</h2>
+              {/* 2. TRACK SHIPMENT */}
 
-              <p>
-                Monitor delivery progress and route
-                details in real time.
-              </p>
-            </button>
-          )}
+              {canTrackShipment && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/tracking")
+                  }
+                >
+                  <span>📍</span>
 
-          {/* 4. ETA PREDICTION */}
+                  <h2>Track Shipment</h2>
 
-          {canViewETA && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/eta")
-              }
-            >
-              <span>⏱️</span>
+                  <p>
+                    View live shipment location and route.
+                  </p>
+                </button>
+              )}
 
-              <h2>ETA Prediction</h2>
+              {/* 3. LIVE MONITORING */}
 
-              <p>
-                View predicted delivery time and delay
-                risk.
-              </p>
-            </button>
-          )}
+              {canLiveMonitor && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/monitoring")
+                  }
+                >
+                  <span>🚚</span>
 
-          {/* 5. ANALYTICS */}
+                  <h2>Live Monitoring</h2>
 
-          {(
-            isCustomer ||
-            isBusinessClient ||
-            isAdmin
-          ) && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/analytics")
-              }
-            >
-              <span>📊</span>
+                  <p>
+                    Monitor delivery progress and route
+                    details in real time.
+                  </p>
+                </button>
+              )}
 
-              <h2>Analytics Dashboard</h2>
+              {/* 4. ETA PREDICTION */}
 
-              <p>
-                View shipment, delivery and operational
-                insights for your role.
-              </p>
-            </button>
-          )}
+              {canViewETA && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/eta")
+                  }
+                >
+                  <span>⏱️</span>
 
-          {/* 6. REPORTS */}
+                  <h2>ETA Prediction</h2>
 
-          {(
-            isCustomer ||
-            isBusinessClient ||
-            isAdmin
-          ) && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/reports")
-              }
-            >
-              <span>📄</span>
+                  <p>
+                    View predicted delivery time and delay
+                    risk.
+                  </p>
+                </button>
+              )}
 
-              <h2>Reports & Export</h2>
+              {/* 5. ANALYTICS */}
 
-              <p>
-                Generate and download shipment, delivery,
-                route and delay reports.
-              </p>
-            </button>
-          )}
+              {(
+                isCustomer ||
+                isBusinessClient ||
+                isAdmin
+              ) && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/analytics")
+                  }
+                >
+                  <span>📊</span>
 
-          {/* 7. COMPLETE DELIVERY */}
+                  <h2>Analytics Dashboard</h2>
 
-          {canSubmitPOD && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/pod")
-              }
-            >
-              <span>✅</span>
+                  <p>
+                    View shipment, delivery and operational
+                    insights for your role.
+                  </p>
+                </button>
+              )}
 
-              <h2>Complete Delivery</h2>
+              {/* 6. REPORTS */}
 
-              <p>
-                Submit proof of delivery with recipient
-                name, signature, photo and delivery notes.
-              </p>
-            </button>
-          )}
+              {(
+                isCustomer ||
+                isBusinessClient ||
+                isAdmin
+              ) && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/reports")
+                  }
+                >
+                  <span>📄</span>
 
-          {/* 8. POD VERIFICATION */}
+                  <h2>Reports & Export</h2>
 
-          {canVerifyPOD && (
-            <button
-              type="button"
-              className="dashboard-card"
-              onClick={() =>
-                router.push("/pod/verification")
-              }
-            >
-              <span>🔍</span>
+                  <p>
+                    Generate and download shipment, delivery,
+                    route and delay reports.
+                  </p>
+                </button>
+              )}
 
-              <h2>POD Verification</h2>
+              {/* 7. COMPLETE DELIVERY */}
 
-              <p>
-                Review and verify pending proof of
-                delivery submissions.
-              </p>
-            </button>
-          )}
+              {canSubmitPOD && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/pod")
+                  }
+                >
+                  <span>✅</span>
 
-        </div>
+                  <h2>Complete Delivery</h2>
+
+                  <p>
+                    Submit proof of delivery with recipient
+                    name, signature, photo and delivery notes.
+                  </p>
+                </button>
+              )}
+
+              {/* 8. POD VERIFICATION */}
+
+              {canVerifyPOD && (
+                <button
+                  type="button"
+                  className="dashboard-card"
+                  onClick={() =>
+                    router.push("/pod/verification")
+                  }
+                >
+                  <span>🔍</span>
+
+                  <h2>POD Verification</h2>
+
+                  <p>
+                    Review and verify pending proof of
+                    delivery submissions.
+                  </p>
+                </button>
+              )}
+
+            </div>
+          </>
+        )}
 
         {/* ================================================= */}
         {/* LOGISTICS OPERATOR - ASSIGNED SHIPMENTS */}
@@ -1598,239 +2416,231 @@ export default function HomePage() {
 
                     return (
                       <div
-                      key={shipment.id}
-                      style={{
-                        border:
-                          "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "18px",
-                        background: "#f8fafc",
-                      }}
-                    >
-
-                      <div
+                        key={shipment.id}
                         style={{
-                          display: "flex",
-                          justifyContent:
-                            "space-between",
-                          gap: "10px",
-                          marginBottom: "14px",
+                          border:
+                            "1px solid #e5e7eb",
+                          borderRadius: "12px",
+                          padding: "18px",
+                          background: "#f8fafc",
                         }}
                       >
 
-                        <strong
+                        <div
                           style={{
-                            color: "#111827",
-                            fontSize: "16px",
+                            display: "flex",
+                            justifyContent:
+                              "space-between",
+                            gap: "10px",
+                            marginBottom: "14px",
                           }}
                         >
-                          Shipment #{shipment.id}
-                        </strong>
 
-                        <span
+                          <strong
+                            style={{
+                              color: "#111827",
+                              fontSize: "16px",
+                            }}
+                          >
+                            Shipment #{shipment.id}
+                          </strong>
+
+                          <span
+                            style={{
+                              background: "#e0ecff",
+                              color: "#1d4ed8",
+                              padding: "5px 9px",
+                              borderRadius: "20px",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {shipment.status ||
+                              "UNKNOWN"}
+                          </span>
+
+                        </div>
+
+                        <p
                           style={{
-                            background: "#e0ecff",
-                            color: "#1d4ed8",
-                            padding: "5px 9px",
-                            borderRadius: "20px",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {shipment.status ||
-                            "UNKNOWN"}
-                        </span>
-
-                      </div>
-
-                      <p
-                        style={{
-                          margin: "7px 0",
-                          color: "#475569",
-                          fontSize: "14px",
-                        }}
-                      >
-                        <strong>
-                          Tracking:
-                        </strong>{" "}
-                        {shipment.trackingNumber ||
-                          "N/A"}
-                      </p>
-
-                      <p
-                        style={{
-                          margin: "7px 0",
-                          color: "#475569",
-                          fontSize: "14px",
-                        }}
-                      >
-                        <strong>
-                          From:
-                        </strong>{" "}
-                        {shipment.origin ||
-                          "N/A"}
-                      </p>
-
-                      <p
-                        style={{
-                          margin: "7px 0",
-                          color: "#475569",
-                          fontSize: "14px",
-                        }}
-                      >
-                        <strong>
-                          To:
-                        </strong>{" "}
-                        {shipment.destination ||
-                          "N/A"}
-                      </p>
-
-                      {/* ========================= */}
-                      {/* UPDATE STATUS */}
-                      {/* ========================= */}
-
-                      <div
-                        style={{
-                          marginTop: "16px",
-                        }}
-                      >
-
-                        <label
-                          style={{
-                            display: "block",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            color: "#374151",
-                            marginBottom: "7px",
-                          }}
-                        >
-                          Update Shipment Status
-                        </label>
-
-                        <select
-                          value={
-                            selectedStatuses[
-                              shipment.id
-                            ] ||
-                            shipment.status ||
-                            "CREATED"
-                          }
-                          disabled={isDelivered}
-                          onChange={(e) =>
-                            setSelectedStatuses(
-                              (current) => ({
-                                ...current,
-                                [shipment.id]:
-                                  e.target.value,
-                              })
-                            )
-                          }
-                          style={{
-                            width: "100%",
-                            boxSizing: "border-box",
-                            padding: "10px 12px",
-                            border:
-                              "1px solid #d1d5db",
-                            borderRadius: "9px",
-                            background:
-                              "#ffffff",
-                            color: "#111827",
+                            margin: "7px 0",
+                            color: "#475569",
                             fontSize: "14px",
-                            cursor: "pointer",
+                          }}
+                        >
+                          <strong>
+                            Tracking:
+                          </strong>{" "}
+                          {shipment.trackingNumber ||
+                            "N/A"}
+                        </p>
+
+                        <p
+                          style={{
+                            margin: "7px 0",
+                            color: "#475569",
+                            fontSize: "14px",
+                          }}
+                        >
+                          <strong>
+                            From:
+                          </strong>{" "}
+                          {shipment.origin ||
+                            "N/A"}
+                        </p>
+
+                        <p
+                          style={{
+                            margin: "7px 0",
+                            color: "#475569",
+                            fontSize: "14px",
+                          }}
+                        >
+                          <strong>
+                            To:
+                          </strong>{" "}
+                          {shipment.destination ||
+                            "N/A"}
+                        </p>
+
+                        <div
+                          style={{
+                            marginTop: "16px",
                           }}
                         >
 
-                          <option value="CREATED">
-                            CREATED
-                          </option>
+                          <label
+                            style={{
+                              display: "block",
+                              fontSize: "13px",
+                              fontWeight: 600,
+                              color: "#374151",
+                              marginBottom: "7px",
+                            }}
+                          >
+                            Update Shipment Status
+                          </label>
 
-                          <option value="PICKED_UP">
-                            PICKED_UP
-                          </option>
+                          <select
+                            value={
+                              selectedStatuses[
+                                shipment.id
+                              ] ||
+                              shipment.status ||
+                              "CREATED"
+                            }
+                            disabled={isDelivered}
+                            onChange={(e) =>
+                              setSelectedStatuses(
+                                (current) => ({
+                                  ...current,
+                                  [shipment.id]:
+                                    e.target.value,
+                                })
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              padding: "10px 12px",
+                              border:
+                                "1px solid #d1d5db",
+                              borderRadius: "9px",
+                              background:
+                                "#ffffff",
+                              color: "#111827",
+                              fontSize: "14px",
+                              cursor: "pointer",
+                            }}
+                          >
 
-                          <option value="IN_TRANSIT">
-                            IN_TRANSIT
-                          </option>
+                            <option value="CREATED">
+                              CREATED
+                            </option>
 
-                          <option value="OUT_FOR_DELIVERY">
-                            OUT_FOR_DELIVERY
-                          </option>
+                            <option value="PICKED_UP">
+                              PICKED_UP
+                            </option>
 
-                          <option value="DELIVERED">
-                            DELIVERED
-                          </option>
+                            <option value="IN_TRANSIT">
+                              IN_TRANSIT
+                            </option>
 
-                        </select>
+                            <option value="OUT_FOR_DELIVERY">
+                              OUT_FOR_DELIVERY
+                            </option>
+
+                            <option value="DELIVERED">
+                              DELIVERED
+                            </option>
+
+                          </select>
+
+                          <button
+                            type="button"
+                            disabled={
+                              isDelivered ||
+                              updatingShipmentId === shipment.id
+                            }
+                            onClick={() =>
+                              updateShipmentStatus(
+                                shipment.id
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              marginTop: "9px",
+                              padding: "11px",
+                              border: "none",
+                              borderRadius: "9px",
+                              background:
+                                isDelivered
+                                  ? "#94a3b8"
+                                  : updatingShipmentId === shipment.id
+                                  ? "#93c5fd"
+                                  : "#2563eb",
+                              color: "#ffffff",
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              cursor:
+                                isDelivered || updatingShipmentId === shipment.id
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            {isDelivered
+                              ? "Status Locked"
+                              : updatingShipmentId === shipment.id
+                              ? "Updating..."
+                              : "Update Status"}
+                          </button>
+
+                        </div>
 
                         <button
                           type="button"
-                          disabled={
-                            isDelivered ||
-                            updatingShipmentId === shipment.id
-                          }
                           onClick={() =>
-                            updateShipmentStatus(
-                              shipment.id
+                            router.push(
+                              `/tracking/${shipment.id}`
                             )
                           }
                           style={{
                             width: "100%",
                             marginTop: "9px",
                             padding: "11px",
-                            border: "none",
+                            border:
+                              "1px solid #2563eb",
                             borderRadius: "9px",
                             background:
-                              isDelivered
-                                ? "#94a3b8"
-                                : updatingShipmentId === shipment.id
-                                ? "#93c5fd"
-                                : "#2563eb",
-                            color: "#ffffff",
+                              "#ffffff",
+                            color: "#2563eb",
                             fontSize: "14px",
                             fontWeight: 600,
-                            cursor:
-                              isDelivered || updatingShipmentId === shipment.id
-                                ? "not-allowed"
-                                : "pointer",
+                            cursor: "pointer",
                           }}
                         >
-                          {isDelivered
-                            ? "Status Locked"
-                            : updatingShipmentId === shipment.id
-                            ? "Updating..."
-                            : "Update Status"}
+                          View Shipment
                         </button>
-
-                      </div>
-
-                      {/* ========================= */}
-                      {/* VIEW SHIPMENT */}
-                      {/* ========================= */}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          router.push(
-                            `/tracking/${shipment.id}`
-                          )
-                        }
-                        style={{
-                          width: "100%",
-                          marginTop: "9px",
-                          padding: "11px",
-                          border:
-                            "1px solid #2563eb",
-                          borderRadius: "9px",
-                          background:
-                            "#ffffff",
-                          color: "#2563eb",
-                          fontSize: "14px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        View Shipment
-                      </button>
 
                       </div>
                     );
