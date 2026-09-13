@@ -15,7 +15,6 @@ import com.shiptrack.shiptrack_pro.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -45,7 +44,6 @@ public class AnalyticsServiceImpl
     // ============================================================
 
     @Override
-    @Cacheable(value = "customerAnalytics", key = "#email")
     public CustomerAnalyticsResponse getCustomerAnalytics(
             String email) {
 
@@ -117,7 +115,6 @@ public class AnalyticsServiceImpl
     // ============================================================
 
     @Override
-    @Cacheable(value = "businessAnalytics", key = "#email")
     public BusinessAnalyticsResponse getBusinessAnalytics(
             String email) {
 
@@ -222,7 +219,6 @@ public class AnalyticsServiceImpl
     // ============================================================
 
     @Override
-    @Cacheable(value = "adminAnalytics", key = "#email")
     public AdminAnalyticsResponse getAdminAnalytics(
             String email) {
 
