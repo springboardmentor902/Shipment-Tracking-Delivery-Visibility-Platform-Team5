@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+  ::selection {
+    @apply bg-beacon/30;
+  }
+}
+
+@layer components {
+  /* Manifest-stamp card: thin tan rule with corner ticks, like a waybill block */
+  .stamp-card {
+    @apply relative border border-manifest bg-paper;
+  }
+  .stamp-card::before,
+  .stamp-card::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: theme('colors.ink');
+    border-style: solid;
+  }
+  .stamp-card::before {
+    top: -1px;
+    left: -1px;
+    border-width: 2px 0 0 2px;
+  }
+  .stamp-card::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 2px 2px 0;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.14em] text-slate;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-ink text-paper font-display font-medium text-sm tracking-wide px-5 py-2.5 hover:bg-inkfaint transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 border border-ink text-ink font-display font-medium text-sm tracking-wide px-5 py-2.5 hover:bg-ink hover:text-paper transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .field-label {
+    @apply eyebrow mb-1.5 block;
+  }
+  .field-input {
+    @apply w-full border border-manifest bg-paper px-3 py-2 text-sm font-body text-ink placeholder:text-slate/60 focus:outline-none focus:border-ink transition-colors;
+  }
+}
