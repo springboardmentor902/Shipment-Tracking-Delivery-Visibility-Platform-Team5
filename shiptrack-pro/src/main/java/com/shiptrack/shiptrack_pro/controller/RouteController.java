@@ -78,4 +78,22 @@ public class RouteController {
                 )
         );
     }
+    @PatchMapping("/{routeId}/location")
+    public ResponseEntity<Route> updateDriverLocation(
+            @PathVariable Long routeId,
+            @RequestParam java.math.BigDecimal latitude,
+            @RequestParam java.math.BigDecimal longitude,
+            @RequestParam(required = false) String location,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                routeService.updateDriverLocation(
+                        routeId,
+                        latitude,
+                        longitude,
+                        location,
+                        authentication.getName()
+                )
+        );
+    }
 }

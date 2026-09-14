@@ -29,7 +29,8 @@ public interface ShipmentService {
 
     Shipment updateStatus(
             Long id,
-            String status
+            String status,
+            String userEmail
     );
 
     void cancelShipment(Long id);

@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
@@ -33,8 +35,7 @@ public class RouteServiceImpl implements RouteService {
         this.routeRepository = routeRepository;
         this.shipmentRepository = shipmentRepository;
         this.userRepository = userRepository;
-        this.routeOptimizationService =
-                routeOptimizationService;
+        this.routeOptimizationService = routeOptimizationService;
     }
 
     @Override
@@ -53,7 +54,7 @@ public class RouteServiceImpl implements RouteService {
             );
         }
 
-        getShipment(route.getShipmentId());
+        Shipment shipment = getShipment(route.getShipmentId());
 
         if (isBlank(route.getOrigin())
                 || isBlank(route.getDestination())) {
@@ -76,13 +77,19 @@ public class RouteServiceImpl implements RouteService {
 
         route.setId(null);
 
+        // Link route with the shipment's assigned logistics operator
+        if (route.getDriverId() == null) {
+            route.setDriverId(
+                    shipment.getAssignedOperatorId()
+            );
+        }
+
         route.setDistanceKm(
                 optimizedRoute.getDistanceKm()
         );
 
         route.setEstimatedTimeMinutes(
-                optimizedRoute
-                        .getTrafficAdjustedDurationMinutes()
+                optimizedRoute.getTrafficAdjustedDurationMinutes()
         );
 
         route.setTrafficCondition(
@@ -126,7 +133,14 @@ public class RouteServiceImpl implements RouteService {
 
         Route route = new Route();
 
-        route.setShipmentId(shipment.getId());
+        route.setShipmentId(
+                shipment.getId()
+        );
+
+        // Link the assigned logistics operator as driver
+        route.setDriverId(
+                shipment.getAssignedOperatorId()
+        );
 
         route.setOrigin(
                 shipment.getPickupAddress()
@@ -183,6 +197,7 @@ public class RouteServiceImpl implements RouteService {
         return List.of(currentRoute);
     }
 
+    @Override
     public List<Route> getRouteHistory(
             Long shipmentId,
             String email) {
@@ -298,8 +313,7 @@ public class RouteServiceImpl implements RouteService {
             );
 
             existingRoute.setEstimatedTimeMinutes(
-                    optimizedRoute
-                            .getTrafficAdjustedDurationMinutes()
+                    optimizedRoute.getTrafficAdjustedDurationMinutes()
             );
 
             existingRoute.setTrafficCondition(
@@ -308,6 +322,84 @@ public class RouteServiceImpl implements RouteService {
         }
 
         return routeRepository.save(existingRoute);
+    }
+
+    /**
+     * Updates the latest driver location for a route.
+     * Only the logistics operator assigned to the shipment
+     * can update its live location.
+     */
+    @Override
+    public Route updateDriverLocation(
+            Long routeId,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String location,
+            String email) {
+
+        User user = getUser(email);
+
+        Route route = routeRepository.findById(routeId)
+                .orElseThrow(
+                        () -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Route not found"
+                        )
+                );
+
+        Shipment shipment =
+                getShipment(route.getShipmentId());
+
+        // Only the assigned logistics operator
+        // can update driver location
+        if (!hasRole(user, "LOGISTICS_OPERATOR")
+                || !Objects.equals(
+                        shipment.getAssignedOperatorId(),
+                        user.getId())) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only the assigned logistics operator can update driver location"
+            );
+        }
+
+        if (latitude == null || longitude == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Latitude and longitude are required"
+            );
+        }
+
+        if (latitude.compareTo(
+                new BigDecimal("-90")) < 0
+                || latitude.compareTo(
+                new BigDecimal("90")) > 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid latitude"
+            );
+        }
+
+        if (longitude.compareTo(
+                new BigDecimal("-180")) < 0
+                || longitude.compareTo(
+                new BigDecimal("180")) > 0) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid longitude"
+            );
+        }
+
+        route.setLastLatitude(latitude);
+        route.setLastLongitude(longitude);
+        route.setLastLocation(location);
+        route.setLastLocationAt(
+                LocalDateTime.now()
+        );
+
+        return routeRepository.save(route);
     }
 
     private void markPreviousRouteAsNotCurrent(

@@ -88,10 +88,15 @@ public class ShipmentController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<Shipment> updateStatus(
             @PathVariable Long id,
-            @RequestParam String status) {
+            @RequestParam String status,
+            Authentication authentication) {
 
         return ResponseEntity.ok(
-                shipmentService.updateStatus(id, status)
+                shipmentService.updateStatus(
+                        id,
+                        status,
+                        authentication.getName()
+                )
         );
     }
 

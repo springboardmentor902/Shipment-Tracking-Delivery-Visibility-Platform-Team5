@@ -20,7 +20,7 @@ public interface RouteService {
             Long shipmentId,
             String email
     );
-
+    
     List<Route> getRouteHistory(
             Long shipmentId,
             String email
@@ -29,6 +29,14 @@ public interface RouteService {
     Route updateRoute(
             Long routeId,
             Route updatedRoute,
+            String email
+    );
+    
+    Route updateDriverLocation(
+            Long routeId,
+            java.math.BigDecimal latitude,
+            java.math.BigDecimal longitude,
+            String location,
             String email
     );
 }

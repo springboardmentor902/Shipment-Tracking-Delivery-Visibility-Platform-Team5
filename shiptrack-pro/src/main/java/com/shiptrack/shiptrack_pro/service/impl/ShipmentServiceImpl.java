@@ -6,6 +6,7 @@ import com.shiptrack.shiptrack_pro.entity.User;
 import com.shiptrack.shiptrack_pro.repository.ShipmentRepository;
 import com.shiptrack.shiptrack_pro.repository.UserRepository;
 import com.shiptrack.shiptrack_pro.service.ETAService;
+import com.shiptrack.shiptrack_pro.service.NotificationService;
 import com.shiptrack.shiptrack_pro.service.RouteService;
 import com.shiptrack.shiptrack_pro.service.ShipmentService;
 
@@ -26,17 +27,20 @@ public class ShipmentServiceImpl
     private final UserRepository userRepository;
     private final RouteService routeService;
     private final ETAService etaService;
+    private final NotificationService notificationService;
 
     public ShipmentServiceImpl(
             ShipmentRepository shipmentRepository,
             UserRepository userRepository,
             RouteService routeService,
-            ETAService etaService) {
+            ETAService etaService,
+            NotificationService notificationService) {
 
         this.shipmentRepository = shipmentRepository;
         this.userRepository = userRepository;
         this.routeService = routeService;
         this.etaService = etaService;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -49,7 +53,8 @@ public class ShipmentServiceImpl
         // Set authenticated user as shipment creator
         shipment.setCreatedBy(user.getId());
 
-        // Associate Business Client shipments with the business account
+        // Associate Business Client shipments
+        // with the business account
         if ("BUSINESS_CLIENT".equalsIgnoreCase(user.getRole())) {
             shipment.setBusinessId(user.getId());
         }
@@ -289,10 +294,52 @@ public class ShipmentServiceImpl
     @Override
     public Shipment updateStatus(
             Long id,
-            String status) {
+            String status,
+            String userEmail) {
 
-        Shipment shipment =
-                getShipmentById(id);
+        // Get authenticated user
+        User user = getUser(userEmail);
+
+        // Get shipment
+        Shipment shipment = getShipmentById(id);
+
+        // DELIVERED is the final status.
+        // It cannot be changed again.
+        if (shipment.getStatus() == ShipmentStatus.DELIVERED) {
+
+            throw new AccessDeniedException(
+                    "Delivered shipments cannot be updated"
+            );
+        }
+
+        // Get role
+        String role =
+                user.getRole().toUpperCase();
+
+        /*
+         * Only:
+         *
+         * 1. ADMINISTRATOR
+         * 2. Assigned LOGISTICS_OPERATOR
+         *
+         * can update shipment status.
+         */
+        boolean isAdmin =
+                role.equals("ADMINISTRATOR");
+
+        boolean isAssignedOperator =
+                role.equals("LOGISTICS_OPERATOR")
+                        && Objects.equals(
+                                user.getId(),
+                                shipment.getAssignedOperatorId()
+                        );
+
+        if (!isAdmin && !isAssignedOperator) {
+
+            throw new AccessDeniedException(
+                    "Only the assigned logistics operator or administrator can update shipment status"
+            );
+        }
 
         ShipmentStatus shipmentStatus;
 
@@ -311,6 +358,7 @@ public class ShipmentServiceImpl
             );
         }
 
+        // Update shipment status
         shipment.setStatus(
                 shipmentStatus
         );
@@ -325,19 +373,78 @@ public class ShipmentServiceImpl
             );
         }
 
+        // Save shipment
         Shipment savedShipment =
                 shipmentRepository.save(
                         shipment
                 );
 
-        // Recalculate ETA during active
-        // shipment stages
+        /*
+         * ============================================================
+         * CREATE NOTIFICATION FOR SHIPMENT CREATOR
+         * ============================================================
+         *
+         * Whenever ADMINISTRATOR or the assigned
+         * LOGISTICS_OPERATOR changes the shipment status,
+         * the user who created the shipment receives
+         * a notification.
+         */
+        if (savedShipment.getCreatedBy() != null) {
+
+            try {
+
+                String notificationTitle =
+                        "Shipment Status Updated";
+
+                String notificationMessage =
+                        "Shipment #"
+                                + savedShipment.getId()
+                                + " ("
+                                + savedShipment.getTrackingNumber()
+                                + ") status has been updated to "
+                                + shipmentStatus.name()
+                                + ".";
+
+                notificationService.createNotification(
+                        savedShipment.getCreatedBy(),
+                        savedShipment.getId(),
+                        notificationTitle,
+                        notificationMessage,
+                        "SHIPMENT_STATUS_UPDATE"
+                );
+
+                System.out.println(
+                        "Shipment status notification created successfully for user "
+                                + savedShipment.getCreatedBy()
+                                + " for shipment "
+                                + savedShipment.getId()
+                );
+
+            } catch (Exception e) {
+
+                /*
+                 * Notification failure should not
+                 * cancel the shipment status update.
+                 */
+                System.out.println(
+                        "Notification creation failed for shipment "
+                                + savedShipment.getId()
+                                + ": "
+                                + e.getMessage()
+                );
+            }
+        }
+
+        /*
+         * Recalculate ETA during active
+         * shipment stages.
+         */
         if (shipmentStatus ==
-                    ShipmentStatus.PICKED_UP
+                        ShipmentStatus.PICKED_UP
                 || shipmentStatus ==
-                    ShipmentStatus.IN_TRANSIT
+                        ShipmentStatus.IN_TRANSIT
                 || shipmentStatus ==
-                    ShipmentStatus.OUT_FOR_DELIVERY) {
+                        ShipmentStatus.OUT_FOR_DELIVERY) {
 
             try {
 

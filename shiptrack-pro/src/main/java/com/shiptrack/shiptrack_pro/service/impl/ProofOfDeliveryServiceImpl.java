@@ -9,6 +9,7 @@ import com.shiptrack.shiptrack_pro.repository.ShipmentRepository;
 import com.shiptrack.shiptrack_pro.repository.UserRepository;
 import com.shiptrack.shiptrack_pro.service.FileStorageService;
 import com.shiptrack.shiptrack_pro.service.ProofOfDeliveryService;
+import com.shiptrack.shiptrack_pro.service.NotificationService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,6 +35,8 @@ public class ProofOfDeliveryServiceImpl
     private final UserRepository userRepository;
 
     private final FileStorageService fileStorageService;
+
+    private final NotificationService notificationService;
 
 
     // =========================================================
@@ -203,19 +206,11 @@ public class ProofOfDeliveryServiceImpl
 
 
         // =====================================================
-        // UPDATE SHIPMENT
         // =====================================================
-
-        shipment.setStatus(
-                ShipmentStatus.DELIVERED
-        );
-
-        shipment.setActualDeliveryDate(
-                LocalDate.now()
-        );
-
-        shipmentRepository.save(shipment);
-
+        // SHIPMENT STATUS IS NOT CHANGED ON POD SUBMISSION
+        // =====================================================
+        // POD remains PENDING until an authorized administrator
+        // or support agent verifies it.
 
         return savedPod;
     }
@@ -267,7 +262,70 @@ public class ProofOfDeliveryServiceImpl
         }
 
 
-        return podRepository.save(pod);
+        ProofOfDelivery savedPod = podRepository.save(pod);
+
+        // =========================================================
+        // MARK SHIPMENT AS DELIVERED AFTER POD APPROVAL
+        // =========================================================
+
+        Shipment shipment =
+                shipmentRepository
+                        .findById(shipmentId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Shipment not found with id: "
+                                                + shipmentId
+                                )
+                        );
+
+        shipment.setStatus(
+                ShipmentStatus.DELIVERED
+        );
+
+        shipment.setActualDeliveryDate(
+                LocalDate.now()
+        );
+
+        Shipment savedShipment =
+                shipmentRepository.save(shipment);
+
+        // =========================================================
+        // SEND DELIVERED NOTIFICATION AFTER POD APPROVAL
+        // =========================================================
+
+        if (savedShipment.getCreatedBy() != null) {
+            try {
+                String notificationTitle =
+                        "Shipment Delivered";
+
+                String notificationMessage =
+                        "Shipment #"
+                                + savedShipment.getId()
+                                + " ("
+                                + savedShipment.getTrackingNumber()
+                                + ") has been delivered successfully.";
+
+                notificationService.createNotification(
+                        savedShipment.getCreatedBy(),
+                        savedShipment.getId(),
+                        notificationTitle,
+                        notificationMessage,
+                        "SHIPMENT_DELIVERED"
+                );
+
+            } catch (Exception e) {
+                // Notification failure must not undo POD approval.
+                System.out.println(
+                        "Delivery notification failed for shipment "
+                                + savedShipment.getId()
+                                + ": "
+                                + e.getMessage()
+                );
+            }
+        }
+
+        return savedPod;
     }
 
 
