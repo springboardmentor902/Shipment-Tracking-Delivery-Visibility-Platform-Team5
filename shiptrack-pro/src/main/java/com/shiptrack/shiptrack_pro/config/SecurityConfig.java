@@ -102,6 +102,7 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // Authentication endpoints are publicly accessible.
                         .requestMatchers(
