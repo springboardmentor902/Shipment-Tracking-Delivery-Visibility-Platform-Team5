@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -86,4 +87,11 @@ public class Shipment {
 
     @Column(name = "cancellation_reason")
     private String cancellationReason;
+
+    // Added missing route fields for GoogleMapsService integration
+    @Column(name = "distance_km", precision = 10, scale = 2)
+    private BigDecimal distanceKm;
+
+    @Column(name = "estimated_time_minutes")
+    private Integer estimatedTimeMinutes;
 }

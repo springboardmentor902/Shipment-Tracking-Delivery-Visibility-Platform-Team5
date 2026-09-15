@@ -1,6 +1,7 @@
 package com.shiptrack.shiptrack_pro.controller;
 
 import com.shiptrack.shiptrack_pro.entity.Shipment;
+import com.shiptrack.shiptrack_pro.entity.TrackingEvent; // Added import
 import com.shiptrack.shiptrack_pro.service.GoogleMapsService;
 import com.shiptrack.shiptrack_pro.service.ShipmentService;
 
@@ -72,6 +73,20 @@ public class ShipmentController {
                         id,
                         authentication.getName()
                 )
+        );
+    }
+
+    // --- ADDED TRACKING HISTORY ENDPOINT ---
+    @GetMapping("/{id}/tracking")
+    public ResponseEntity<List<TrackingEvent>> getTrackingHistory(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        // Validates user authorization before returning history
+        shipmentService.getShipmentByIdForUser(id, authentication.getName());
+
+        return ResponseEntity.ok(
+                shipmentService.getTrackingHistory(id)
         );
     }
 
