@@ -47,7 +47,7 @@ public class SecurityConfig {
                 new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                List.of("http://localhost:3000")
+                List.of("http://localhost:3000", "https://shiptrack-frontend.vercel.app")
         );
 
         configuration.setAllowedMethods(
