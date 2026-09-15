@@ -1,6 +1,7 @@
 package com.shiptrack.shiptrack_pro.service;
 
 import com.shiptrack.shiptrack_pro.entity.Shipment;
+import com.shiptrack.shiptrack_pro.entity.TrackingEvent; // Added import
 
 import java.util.List;
 
@@ -33,4 +34,7 @@ public interface ShipmentService {
     );
 
     void cancelShipment(Long id);
+
+    // Added method for tracking history
+    List<TrackingEvent> getTrackingHistory(Long shipmentId); 
 }

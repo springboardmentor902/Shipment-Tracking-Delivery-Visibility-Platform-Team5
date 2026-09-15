@@ -32,13 +32,13 @@ public class TrackingEventServiceImpl implements TrackingEventService {
                         "Shipment not found with id: " + shipmentId
                 ));
 
-        TrackingEvent event = TrackingEvent.builder()
-                .shipmentId(shipment.getId())
-                .status(request.getStatus())
-                .location(request.getLocation())
-                .notes(request.getNotes())
-                .eventTimestamp(LocalDateTime.now())
-                .build();
+        // FIXED LOGIC: Standard object instantiation (No Lombok builder)
+        TrackingEvent event = new TrackingEvent();
+        event.setShipmentId(shipment.getId());
+        event.setStatus(request.getStatus());
+        event.setLocation(request.getLocation());
+        event.setNotes(request.getNotes());
+        event.setEventTimestamp(LocalDateTime.now());
 
         return trackingEventRepository.save(event);
     }
@@ -53,7 +53,8 @@ public class TrackingEventServiceImpl implements TrackingEventService {
             );
         }
 
+        // FIXED LOGIC: Changed 'Asc' to 'Desc' to match the repository method
         return trackingEventRepository
-                .findByShipmentIdOrderByEventTimestampAsc(shipmentId);
+                .findByShipmentIdOrderByEventTimestampDesc(shipmentId);
     }
 }
