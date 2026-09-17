@@ -14,12 +14,15 @@ public class TestController {
 
     @GetMapping("/secure")
     public Map<String, Object> secureEndpoint() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
 
         return Map.of(
                 "message", "You reached a protected endpoint!",
                 "loggedInAs", authentication.getName(),
-                "authorities", authentication.getAuthorities().toString()
+                "authorities",
+                authentication.getAuthorities().toString()
         );
     }
 }

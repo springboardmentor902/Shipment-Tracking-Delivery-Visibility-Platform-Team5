@@ -7,16 +7,16 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
-@Entity                          
-@Table(name = "users")           
-@Data                            
-@Builder                         
-@NoArgsConstructor               
-@AllArgsConstructor              
+@Entity
+@Table(name = "users")
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class User {
 
-    @Id                          
-    @GeneratedValue(strategy = GenerationType.IDENTITY) 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "full_name", nullable = false)
@@ -31,6 +31,7 @@ public class User {
     private String phone;
     private String role;
     private String status;
+
     private String profileImageUrl;
 
     @CreationTimestamp
@@ -43,5 +44,4 @@ public class User {
 
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
-
 }

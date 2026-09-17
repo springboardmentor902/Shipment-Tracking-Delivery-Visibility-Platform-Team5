@@ -1,19 +1,15 @@
 package com.shiptrack.shiptrack_pro.service.impl;
 
-import com.shiptrack.shiptrack_pro.dto.PackageRequest;
-import com.shiptrack.shiptrack_pro.dto.PackageResponse;
 import com.shiptrack.shiptrack_pro.entity.Package;
 import com.shiptrack.shiptrack_pro.entity.Shipment;
-import com.shiptrack.shiptrack_pro.entity.User;
 import com.shiptrack.shiptrack_pro.repository.PackageRepository;
 import com.shiptrack.shiptrack_pro.repository.ShipmentRepository;
-import com.shiptrack.shiptrack_pro.repository.UserRepository;
 import com.shiptrack.shiptrack_pro.service.PackageService;
-
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.security.access.AccessDeniedException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -23,92 +19,91 @@ public class PackageServiceImpl implements PackageService {
 
     private final PackageRepository packageRepository;
     private final ShipmentRepository shipmentRepository;
-    private final UserRepository userRepository;
 
     @Override
-    public PackageResponse createPackage(
+    @Transactional
+    public Package createPackage(
             Long shipmentId,
-            PackageRequest request,
-            String email) {
+            Package packageEntity) {
 
-        Shipment shipment = getVisibleShipment(shipmentId, email);
+        Shipment shipment =
+                shipmentRepository.findById(shipmentId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Shipment not found"
+                                )
+                        );
 
-        Package packageEntity = Package.builder()
-                .shipment(shipment)
-                .weight(request.getWeight())
-                .dimensions(request.getDimensions())
-                .quantity(request.getQuantity())
-                .declaredValue(request.getDeclaredValue())
-                .fragile(request.getFragile())
-                .description(request.getDescription())
-                .build();
+        packageEntity.setId(null);
+        packageEntity.setShipment(shipment);
 
-        return toResponse(
-                packageRepository.save(packageEntity)
-        );
+        return packageRepository.save(packageEntity);
     }
 
     @Override
-    public List<PackageResponse> getPackages(
-            Long shipmentId,
-            String email) {
-
-        getVisibleShipment(shipmentId, email);
+    public List<Package> getPackagesByShipment(
+            Long shipmentId) {
 
         return packageRepository
-                .findByShipmentId(shipmentId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+                .findByShipmentId(shipmentId);
     }
 
-    private Shipment getVisibleShipment(
-            Long shipmentId,
-            String email) {
+    @Override
+    public Package getPackageById(Long id) {
 
-        User user = userRepository.findByEmail(email)
+        return packageRepository.findById(id)
                 .orElseThrow(() ->
-                        new RuntimeException("User not found"));
-
-        Shipment shipment = shipmentRepository.findById(shipmentId)
-                .orElseThrow(() ->
-                        new RuntimeException("Shipment not found"));
-
-        String role = user.getRole().toUpperCase();
-
-        boolean allowed =
-                role.equals("ADMINISTRATOR")
-                || role.equals("SUPPORT_AGENT")
-                || ((role.equals("CUSTOMER")
-                    || role.equals("BUSINESS_CLIENT"))
-                    && user.getId().equals(
-                            shipment.getCreatedBy()))
-                || (role.equals("LOGISTICS_OPERATOR")
-                    && user.getId().equals(
-                            shipment.getAssignedOperatorId()));
-
-        if (!allowed) {
-            throw new AccessDeniedException(
-                    "You cannot access this shipment"
-            );
-        }
-
-        return shipment;
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Package not found"
+                        )
+                );
     }
 
-    private PackageResponse toResponse(Package packageEntity) {
+    @Override
+    @Transactional
+    public Package updatePackage(
+            Long id,
+            Package packageEntity) {
 
-        return PackageResponse.builder()
-                .id(packageEntity.getId())
-                .shipmentId(
-                        packageEntity.getShipment().getId()
-                )
-                .weight(packageEntity.getWeight())
-                .dimensions(packageEntity.getDimensions())
-                .quantity(packageEntity.getQuantity())
-                .declaredValue(packageEntity.getDeclaredValue())
-                .fragile(packageEntity.getFragile())
-                .description(packageEntity.getDescription())
-                .build();
+        Package existing =
+                getPackageById(id);
+
+        existing.setPackageDescription(
+                packageEntity.getPackageDescription()
+        );
+
+        existing.setWeight(
+                packageEntity.getWeight()
+        );
+
+        existing.setDimensions(
+                packageEntity.getDimensions()
+        );
+
+        existing.setQuantity(
+                packageEntity.getQuantity()
+        );
+
+        existing.setDeclaredValue(
+                packageEntity.getDeclaredValue()
+        );
+
+        existing.setFragile(
+                packageEntity.getFragile()
+        );
+
+        return packageRepository.save(existing);
+    }
+
+    @Override
+    @Transactional
+    public void deletePackage(Long id) {
+
+        Package packageEntity =
+                getPackageById(id);
+
+        packageRepository.delete(packageEntity);
     }
 }

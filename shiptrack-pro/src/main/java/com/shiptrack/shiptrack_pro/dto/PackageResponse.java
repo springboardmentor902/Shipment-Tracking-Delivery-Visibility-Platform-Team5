@@ -4,18 +4,24 @@ import lombok.*;
 
 import java.math.BigDecimal;
 
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class PackageResponse {
 
     private Long id;
-    private Long shipmentId;
-    private BigDecimal weight;
+
+    private String packageDescription;
+
+    private Double weight;
+
     private String dimensions;
+
     private Integer quantity;
+
     private BigDecimal declaredValue;
+
     private Boolean fragile;
-    private String description;
 }

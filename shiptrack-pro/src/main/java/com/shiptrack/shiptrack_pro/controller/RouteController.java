@@ -1,14 +1,14 @@
 package com.shiptrack.shiptrack_pro.controller;
 
-import com.shiptrack.shiptrack_pro.entity.Route;
+import com.shiptrack.shiptrack_pro.dto.RouteRequest;
+import com.shiptrack.shiptrack_pro.dto.RouteResponse;
 import com.shiptrack.shiptrack_pro.service.RouteService;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/routes")
@@ -17,42 +17,63 @@ public class RouteController {
 
     private final RouteService routeService;
 
-    @PostMapping
-    public ResponseEntity<Route> createRoute(
-            @RequestBody Route route,
-            Authentication authentication) {
+    // =====================================================
+    // CREATE ROUTE
+    // POST /api/routes
+    // =====================================================
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(routeService.createRoute(
-                        route,
-                        authentication.getName()
-                ));
+    @PostMapping
+    public ResponseEntity<RouteResponse> createRoute(
+            @RequestBody RouteRequest request) {
+
+        RouteResponse response =
+                routeService.createRoute(request);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(response);
     }
 
+    // =====================================================
+    // GET ROUTE BY SHIPMENT
+    // GET /api/routes/{shipmentId}
+    // =====================================================
+
     @GetMapping("/{shipmentId}")
-    public ResponseEntity<List<Route>> getRoutes(
-            @PathVariable Long shipmentId,
-            Authentication authentication) {
+    public ResponseEntity<RouteResponse> getRouteByShipmentId(
+            @PathVariable Long shipmentId) {
 
         return ResponseEntity.ok(
-                routeService.getRoutesByShipmentId(
-                        shipmentId,
-                        authentication.getName()
+                routeService.getRouteByShipmentId(
+                        shipmentId
                 )
         );
     }
 
-    @PatchMapping("/{routeId}")
-    public ResponseEntity<Route> updateRoute(
+    // =====================================================
+    // ASSIGN / CHANGE DRIVER
+    // PUT /api/routes/{routeId}/driver/{driverId}
+    // =====================================================
+
+    @PutMapping("/{routeId}/driver/{driverId}")
+    public ResponseEntity<RouteResponse> assignDriver(
             @PathVariable Long routeId,
-            @RequestBody Route route,
-            Authentication authentication) {
+            @PathVariable Long driverId) {
 
         return ResponseEntity.ok(
-                routeService.updateRoute(
+                routeService.assignDriver(
                         routeId,
-                        route,
-                        authentication.getName()
+                        driverId
+                )
+        );
+    }
+    @PostMapping("/{routeId}/recalculate")
+    public ResponseEntity<RouteResponse> recalculateRoute(
+            @PathVariable Long routeId) {
+
+        return ResponseEntity.ok(
+                routeService.recalculateRoute(
+                        routeId
                 )
         );
     }

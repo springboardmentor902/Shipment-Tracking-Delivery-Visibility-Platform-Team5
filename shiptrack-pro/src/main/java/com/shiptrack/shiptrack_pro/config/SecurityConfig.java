@@ -1,19 +1,19 @@
 package com.shiptrack.shiptrack_pro.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shiptrack.shiptrack_pro.security.JwtAuthFilter;
+
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -23,120 +23,279 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+
 @Configuration
-@EnableMethodSecurity
-@EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
 
+
+    // =====================================================
+    // PASSWORD ENCODER
+    // =====================================================
+
     @Bean
     public PasswordEncoder passwordEncoder() {
+
         return new BCryptPasswordEncoder();
     }
 
-    // Provides ObjectMapper for GoogleMapsService
+
+    // =====================================================
+    // SECURITY FILTER CHAIN
+    // =====================================================
+
     @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper();
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http) throws Exception {
+
+        http
+
+                // =================================================
+                // CSRF
+                // =================================================
+
+                .csrf(csrf ->
+                        csrf.disable()
+                )
+
+
+                // =================================================
+                // CORS
+                // =================================================
+
+                .cors(cors ->
+                        cors.configurationSource(
+                                corsConfigurationSource()
+                        )
+                )
+
+
+                // =================================================
+                // SESSION
+                // =================================================
+
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
+
+                // =================================================
+                // AUTHORIZATION
+                // =================================================
+
+                .authorizeHttpRequests(auth -> auth
+
+                        // -------------------------------------------------
+                        // CORS PREFLIGHT
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+
+
+                        // -------------------------------------------------
+                        // LOGIN + REGISTER
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                "/api/auth/**"
+                        ).permitAll()
+
+
+                        // =================================================
+                        // SHIPMENTS
+                        // =================================================
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/shipments"
+                        ).authenticated()
+
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/shipments/**"
+                        ).authenticated()
+
+
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/shipments/**"
+                        ).authenticated()
+
+
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/shipments/**"
+                        ).authenticated()
+
+
+                        // =================================================
+                        // ROUTES
+                        // =================================================
+
+                        // -------------------------------------------------
+                        // CREATE ROUTE
+                        // POST /api/routes
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/routes"
+                        ).hasAnyRole(
+                                "ADMIN",
+                                "LOGISTICS_OPERATOR",
+                                "OPERATOR"
+                        )
+
+
+                        // -------------------------------------------------
+                        // RECALCULATE ROUTE
+                        // POST /api/routes/{id}/recalculate
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/routes/*/recalculate"
+                        ).hasAnyRole(
+                                "ADMIN",
+                                "LOGISTICS_OPERATOR",
+                                "OPERATOR"
+                        )
+
+
+                        // -------------------------------------------------
+                        // GET ROUTE
+                        // GET /api/routes/{shipmentId}
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/routes/**"
+                        ).authenticated()
+
+
+                        // -------------------------------------------------
+                        // ASSIGN DRIVER
+                        // PUT /api/routes/{routeId}/driver/{driverId}
+                        // -------------------------------------------------
+
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/routes/**"
+                        ).hasAnyRole(
+                                "ADMIN",
+                                "LOGISTICS_OPERATOR",
+                                "OPERATOR"
+                        )
+
+
+                        // =================================================
+                        // SECURE TEST ENDPOINT
+                        // =================================================
+
+                        .requestMatchers(
+                                "/api/test/secure"
+                        ).authenticated()
+
+
+                        // =================================================
+                        // EVERYTHING ELSE
+                        // =================================================
+
+                        .anyRequest().authenticated()
+                )
+
+
+                // =================================================
+                // HTTP BASIC DISABLED
+                // =================================================
+
+                .httpBasic(
+                        basic -> basic.disable()
+                )
+
+
+                // =================================================
+                // FORM LOGIN DISABLED
+                // =================================================
+
+                .formLogin(
+                        form -> form.disable()
+                )
+
+
+                // =================================================
+                // JWT FILTER
+                // =================================================
+
+                .addFilterBefore(
+                        jwtAuthFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                );
+
+
+        return http.build();
     }
+
+
+    // =====================================================
+    // CORS CONFIGURATION
+    // =====================================================
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration = new CorsConfiguration();
+        CorsConfiguration configuration =
+                new CorsConfiguration();
+
 
         configuration.setAllowedOrigins(
-                List.of("http://localhost:3000")
+                List.of(
+                        "http://localhost:3000",
+                        "http://localhost:3001"
+                )
         );
 
+
         configuration.setAllowedMethods(
-                List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                List.of(
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "PATCH",
+                        "OPTIONS"
+                )
         );
+
 
         configuration.setAllowedHeaders(
                 List.of("*")
         );
 
-        configuration.setAllowCredentials(true);
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        configuration.setAllowCredentials(
+                true
+        );
 
-        source.registerCorsConfiguration("/**", configuration);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+
+        source.registerCorsConfiguration(
+                "/**",
+                configuration
+        );
+
 
         return source;
-    }
-
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-
-        http
-            .csrf(csrf -> csrf.disable())
-
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
-            .sessionManagement(session ->
-                    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-
-            .authorizeHttpRequests(auth -> auth
-
-                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    .requestMatchers("/api/auth/**").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/shipments/distance").permitAll()
-
-                    .requestMatchers(HttpMethod.POST, "/api/shipments")
-                            .hasAnyRole("CUSTOMER", "BUSINESS_CLIENT")
-
-                    .requestMatchers(HttpMethod.PUT, "/api/users/*/profile").authenticated()
-
-                    .requestMatchers(HttpMethod.PATCH, "/api/users/*/status")
-                            .hasAnyRole("LOGISTICS_OPERATOR", "ADMINISTRATOR")
-
-                    // Tracking management
-                    .requestMatchers("/api/tracking/**")
-                            .hasAnyRole("LOGISTICS_OPERATOR", "ADMINISTRATOR")
-
-                    // Route viewing: all authenticated users
-                    .requestMatchers(HttpMethod.GET, "/api/routes/**").authenticated()
-
-                    // Route creation: operator/admin only
-                    .requestMatchers(HttpMethod.POST, "/api/routes/**")
-                            .hasAnyRole("LOGISTICS_OPERATOR", "ADMINISTRATOR")
-
-                    // Route updates: operator/admin only
-                    .requestMatchers(HttpMethod.PUT, "/api/routes/**")
-                            .hasAnyRole("LOGISTICS_OPERATOR", "ADMINISTRATOR")
-
-                    .requestMatchers(HttpMethod.PATCH, "/api/routes/**")
-                            .hasAnyRole("LOGISTICS_OPERATOR", "ADMINISTRATOR")
-
-                    .requestMatchers(HttpMethod.POST, "/api/pod/**")
-                            .hasRole("LOGISTICS_OPERATOR")
-
-                    .requestMatchers("/api/analytics/**", "/api/reports/**")
-                            .hasAnyRole("BUSINESS_CLIENT", "ADMINISTRATOR")
-
-                    .requestMatchers(HttpMethod.POST, "/api/eta/**").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/eta/**").authenticated()
-
-                    .requestMatchers("/api/admin/**").hasRole("ADMINISTRATOR")
-
-                    // ALLOW VIEWING SHIPMENT TRACKING HISTORY
-                    .requestMatchers(HttpMethod.GET, "/api/shipments/*/tracking").authenticated()
-
-                    // ALLOW UPDATING SHIPMENT STATUS FOR TESTING (Fixed with /** wildcard)
-                    .requestMatchers(HttpMethod.PATCH, "/api/shipments/**").permitAll()
-
-                    .anyRequest().authenticated()
-            )
-
-            .httpBasic(basic -> basic.disable())
-            .formLogin(form -> form.disable())
-
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
-        return http.build();
     }
 }

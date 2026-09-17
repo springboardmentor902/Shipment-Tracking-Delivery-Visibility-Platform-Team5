@@ -1,14 +1,28 @@
 package com.shiptrack.shiptrack_pro.service;
 
-import com.shiptrack.shiptrack_pro.entity.Route;
-
-import java.util.List;
+import com.shiptrack.shiptrack_pro.dto.RouteRequest;
+import com.shiptrack.shiptrack_pro.dto.RouteResponse;
 
 public interface RouteService {
 
-    Route createRoute(Route route, String email);
+    // Create a new route
+    RouteResponse createRoute(
+            RouteRequest request
+    );
 
-    List<Route> getRoutesByShipmentId(Long shipmentId, String email);
+    // Get route using shipment ID
+    RouteResponse getRouteByShipmentId(
+            Long shipmentId
+    );
 
-    Route updateRoute(Long routeId, Route updatedRoute, String email);
+    // Assign / change driver
+    RouteResponse assignDriver(
+            Long routeId,
+            Long driverId
+    );
+
+    // Recalculate an existing route
+    RouteResponse recalculateRoute(
+            Long routeId
+    );
 }

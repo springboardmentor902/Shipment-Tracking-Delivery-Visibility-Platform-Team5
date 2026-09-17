@@ -4,13 +4,17 @@ import com.shiptrack.shiptrack_pro.entity.Shipment;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
-public interface ShipmentRepository
-        extends JpaRepository<Shipment, Long> {
+public interface ShipmentRepository extends JpaRepository<Shipment, Long> {
 
-    List<Shipment> findByCreatedBy(Long createdBy);
+    Optional<Shipment> findByTrackingNumber(String trackingNumber);
 
-    List<Shipment> findByAssignedOperatorId(
-            Long assignedOperatorId
-    );
+    boolean existsByTrackingNumber(String trackingNumber);
+
+    // Customer / Business Client
+    List<Shipment> findByCustomerId(Long customerId);
+
+    // Logistics Operator
+    List<Shipment> findByAssignedOperatorId(Long operatorId);
 }

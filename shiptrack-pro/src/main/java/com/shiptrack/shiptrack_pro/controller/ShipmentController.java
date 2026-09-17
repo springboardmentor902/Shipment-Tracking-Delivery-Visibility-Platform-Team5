@@ -1,123 +1,75 @@
 package com.shiptrack.shiptrack_pro.controller;
 
-import com.shiptrack.shiptrack_pro.entity.Shipment;
-import com.shiptrack.shiptrack_pro.entity.TrackingEvent; // Added import
-import com.shiptrack.shiptrack_pro.service.GoogleMapsService;
+import com.shiptrack.shiptrack_pro.dto.ShipmentRequest;
+import com.shiptrack.shiptrack_pro.dto.ShipmentResponse;
 import com.shiptrack.shiptrack_pro.service.ShipmentService;
-
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/shipments")
+@RequiredArgsConstructor
 public class ShipmentController {
 
     private final ShipmentService shipmentService;
-    private final GoogleMapsService googleMapsService;
 
-    public ShipmentController(
-            ShipmentService shipmentService,
-            GoogleMapsService googleMapsService) {
-
-        this.shipmentService = shipmentService;
-        this.googleMapsService = googleMapsService;
-    }
-
+    // Create shipment
     @PostMapping
-    public ResponseEntity<Shipment> createShipment(
-            @RequestBody Shipment shipment,
-            Authentication authentication) {
+    public ResponseEntity<ShipmentResponse> createShipment(
+            @RequestBody ShipmentRequest request) {
 
-        return ResponseEntity.ok(
-                shipmentService.createShipment(
-                        shipment,
-                        authentication.getName()
-                )
-        );
+        ShipmentResponse response =
+                shipmentService.createShipment(request);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(response);
     }
 
+    // Get all shipments
     @GetMapping
-    public ResponseEntity<List<Shipment>> getAllShipments(
-            Authentication authentication) {
+    public ResponseEntity<List<ShipmentResponse>> getAllShipments() {
 
         return ResponseEntity.ok(
-                shipmentService.getShipmentsForUser(
-                        authentication.getName()
-                )
+                shipmentService.getAllShipments()
         );
     }
 
-    @GetMapping("/distance")
-    public ResponseEntity<String> getDistance(
-            @RequestParam String origin,
-            @RequestParam String destination) {
-
-        return ResponseEntity.ok(
-                googleMapsService.getDistance(
-                        origin,
-                        destination
-                )
-        );
-    }
-
+    // Get shipment by ID
     @GetMapping("/{id}")
-    public ResponseEntity<Shipment> getShipmentById(
-            @PathVariable Long id,
-            Authentication authentication) {
+    public ResponseEntity<ShipmentResponse> getShipmentById(
+            @PathVariable Long id) {
 
         return ResponseEntity.ok(
-                shipmentService.getShipmentByIdForUser(
-                        id,
-                        authentication.getName()
-                )
+                shipmentService.getShipmentById(id)
         );
     }
 
-    // --- ADDED TRACKING HISTORY ENDPOINT ---
-    @GetMapping("/{id}/tracking")
-    public ResponseEntity<List<TrackingEvent>> getTrackingHistory(
-            @PathVariable Long id,
-            Authentication authentication) {
-
-        // Validates user authorization before returning history
-        shipmentService.getShipmentByIdForUser(id, authentication.getName());
-
-        return ResponseEntity.ok(
-                shipmentService.getTrackingHistory(id)
-        );
-    }
-
-    @PutMapping("/{id}")
-    public ResponseEntity<Shipment> updateShipment(
-            @PathVariable Long id,
-            @RequestBody Shipment shipment) {
-
-        return ResponseEntity.ok(
-                shipmentService.updateShipment(id, shipment)
-        );
-    }
-
-    @PatchMapping("/{id}/status")
-    public ResponseEntity<Shipment> updateStatus(
+    // Update shipment status
+    @PutMapping("/{id}/status")
+    public ResponseEntity<ShipmentResponse> updateShipmentStatus(
             @PathVariable Long id,
             @RequestParam String status) {
 
         return ResponseEntity.ok(
-                shipmentService.updateStatus(id, status)
+                shipmentService.updateShipmentStatus(
+                        id,
+                        status
+                )
         );
     }
 
+    // Cancel shipment
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> cancelShipment(
+    public ResponseEntity<Void> cancelShipment(
             @PathVariable Long id) {
 
         shipmentService.cancelShipment(id);
 
-        return ResponseEntity.ok(
-                "Shipment cancelled successfully"
-        );
+        return ResponseEntity.noContent().build();
     }
 }

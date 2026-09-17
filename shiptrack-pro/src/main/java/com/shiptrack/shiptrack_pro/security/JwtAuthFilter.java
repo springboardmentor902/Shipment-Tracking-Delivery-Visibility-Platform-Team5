@@ -4,9 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -23,68 +21,224 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final CustomUserDetailsService userDetailsService;
 
     @Override
+    protected boolean shouldNotFilter(
+            HttpServletRequest request) {
+
+        String path = request.getServletPath();
+
+        // Do not run JWT authentication for login/registration
+        if (path.startsWith("/api/auth/")) {
+            return true;
+        }
+
+        // Do not run JWT authentication for CORS preflight
+        if ("OPTIONS".equalsIgnoreCase(
+                request.getMethod())) {
+
+            return true;
+        }
+
+        return false;
+    }
+
+
+    @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
+        String authHeader =
+                request.getHeader("Authorization");
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
+
+        // =====================================================
+        // CHECK AUTHORIZATION HEADER
+        // =====================================================
+
+        if (authHeader == null
+                || !authHeader.startsWith("Bearer ")) {
+
+            System.out.println(
+                    "JWT FILTER: No Bearer token found"
+            );
+
+            filterChain.doFilter(
+                    request,
+                    response
+            );
+
             return;
         }
 
-        final String token = authHeader.substring(7);
+
+        // =====================================================
+        // EXTRACT TOKEN
+        // =====================================================
+
+        String token =
+                authHeader.substring(7);
+
 
         try {
-            String email = jwtUtil.extractEmail(token);
 
-            System.out.println("JWT email: " + email);
+            // =================================================
+            // EXTRACT EMAIL FROM TOKEN
+            // =================================================
 
-            if (email != null &&
-                    SecurityContextHolder
-                            .getContext()
-                            .getAuthentication() == null) {
+            String email =
+                    jwtUtil.extractEmail(token);
+
+
+            System.out.println(
+                    "JWT FILTER: Email from token = "
+                            + email
+            );
+
+
+            // =================================================
+            // CHECK IF USER IS ALREADY AUTHENTICATED
+            // =================================================
+
+            if (email != null
+                    && SecurityContextHolder
+                    .getContext()
+                    .getAuthentication() == null) {
+
+
+                // =============================================
+                // LOAD USER FROM DATABASE
+                // =============================================
 
                 UserDetails userDetails =
-                        userDetailsService.loadUserByUsername(email);
+                        userDetailsService
+                                .loadUserByUsername(email);
+
 
                 System.out.println(
-                        "User authorities: " +
-                        userDetails.getAuthorities()
+                        "JWT FILTER: User found = "
+                                + userDetails.getUsername()
                 );
 
-                boolean validToken =
+
+                System.out.println(
+                        "JWT FILTER: User authorities = "
+                                + userDetails.getAuthorities()
+                );
+
+
+                // =============================================
+                // VALIDATE TOKEN
+                // =============================================
+
+                boolean valid =
                         jwtUtil.isTokenValid(
                                 token,
                                 userDetails.getUsername()
                         );
 
+
                 System.out.println(
-                        "JWT valid: " + validToken
+                        "JWT FILTER: Token valid = "
+                                + valid
                 );
 
-                if (validToken) {
-                    UsernamePasswordAuthenticationToken authToken =
+
+                if (valid) {
+
+                    // =========================================
+                    // CREATE AUTHENTICATION
+                    // =========================================
+
+                    UsernamePasswordAuthenticationToken
+                            authentication =
                             new UsernamePasswordAuthenticationToken(
                                     userDetails,
                                     null,
                                     userDetails.getAuthorities()
                             );
 
+
+                    // =========================================
+                    // SET SECURITY CONTEXT
+                    // =========================================
+
                     SecurityContextHolder
                             .getContext()
-                            .setAuthentication(authToken);
+                            .setAuthentication(
+                                    authentication
+                            );
+
+
+                    System.out.println(
+                            "JWT FILTER: Authentication set successfully"
+                    );
+
+                } else {
+
+                    System.out.println(
+                            "JWT FILTER: Token is INVALID"
+                    );
                 }
             }
 
+
         } catch (Exception e) {
-            System.out.println("JWT authentication failed: " +e.getMessage());
+
+            System.out.println(
+                    "JWT FILTER ERROR: "
+                            + e.getMessage()
+            );
+
             e.printStackTrace();
+
+            SecurityContextHolder
+                    .clearContext();
         }
 
-        filterChain.doFilter(request, response);
+
+        // =====================================================
+        // DIAGNOSTIC INFORMATION
+        // =====================================================
+
+        System.out.println(
+                "REQUEST: "
+                        + request.getMethod()
+                        + " "
+                        + request.getRequestURI()
+        );
+
+
+        System.out.println(
+                "AUTHENTICATION: "
+                        + SecurityContextHolder
+                        .getContext()
+                        .getAuthentication()
+        );
+
+
+        if (SecurityContextHolder
+                .getContext()
+                .getAuthentication() != null) {
+
+            System.out.println(
+                    "AUTHORITIES: "
+                            + SecurityContextHolder
+                            .getContext()
+                            .getAuthentication()
+                            .getAuthorities()
+            );
+        }
+
+
+        // =====================================================
+        // CONTINUE REQUEST
+        // =====================================================
+
+        filterChain.doFilter(
+                request,
+                response
+        );
     }
 }

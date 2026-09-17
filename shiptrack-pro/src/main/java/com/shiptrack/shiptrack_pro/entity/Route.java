@@ -2,49 +2,99 @@ package com.shiptrack.shiptrack_pro.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "routes")
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Route {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "shipment_id", nullable = false)
-    private Long shipmentId;
+    /*
+     * One shipment has one route.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipment_id", nullable = false, unique = true)
+    private Shipment shipment;
 
-    @Column(name = "driver_id")
-    private Long driverId;
+    /*
+     * Driver assigned to this route.
+     *
+     * We use the existing User table.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "driver_id")
+    private User driver;
 
-    private String origin;
+    /*
+     * Starting and destination addresses.
+     */
+    @Column(nullable = false)
+    private String sourceAddress;
 
-    private String destination;
+    @Column(nullable = false)
+    private String destinationAddress;
 
-    @Column(columnDefinition = "text")
-    private String waypoints;
+    /*
+     * Google Maps coordinates.
+     */
+    private Double sourceLatitude;
 
-    @Column(name = "distance_km")
-    private BigDecimal distanceKm;
+    private Double sourceLongitude;
 
-    @Column(name = "estimated_time_minutes")
+    private Double destinationLatitude;
+
+    private Double destinationLongitude;
+
+    /*
+     * Google Maps calculated distance.
+     *
+     * Stored in kilometers.
+     */
+    private Double distanceKm;
+
+    /*
+     * Estimated travel time.
+     *
+     * Stored in minutes.
+     */
     private Integer estimatedTimeMinutes;
 
-    @Column(name = "actual_time_minutes")
-    private Integer actualTimeMinutes;
+    /*
+     * Route status.
+     */
+    @Enumerated(EnumType.STRING)
+    private RouteStatus status;
 
-    @Column(name = "traffic_condition")
-    private String trafficCondition;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    /*
+     * Timestamps.
+     */
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+
+        if (status == null) {
+            status = RouteStatus.CREATED;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+
+        updatedAt = LocalDateTime.now();
+    }
 }

@@ -1,97 +1,95 @@
 package com.shiptrack.shiptrack_pro.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "shipments")
-@Data
-@Builder
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class Shipment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tracking_number", nullable = false, unique = true)
+    @Column(unique = true, nullable = false)
     private String trackingNumber;
 
-    @Column(name = "created_by")
-    private Long createdBy;
-
-    @Column(name = "business_id")
-    private Long businessId;
-
-    @Column(name = "assigned_operator_id")
-    private Long assignedOperatorId;
-
-    @Column(name = "sender_name")
     private String senderName;
-
-    @Column(name = "sender_phone")
     private String senderPhone;
-
-    @Column(name = "sender_address")
     private String senderAddress;
 
-    @Column(name = "receiver_name")
     private String receiverName;
-
-    @Column(name = "receiver_phone")
     private String receiverPhone;
-
-    @Column(name = "receiver_email")
     private String receiverEmail;
-
-    @Column(name = "receiver_address")
     private String receiverAddress;
 
-    @Column(name = "pickup_address")
     private String pickupAddress;
-
-    @Column(name = "delivery_address")
     private String deliveryAddress;
 
-    @Builder.Default
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
-    private ShipmentStatus status = ShipmentStatus.CREATED;
+    private ShipmentStatus status;
 
-    @Column(name = "priority")
     private String priority;
 
-    @Column(name = "estimated_delivery_date")
     private LocalDate estimatedDeliveryDate;
 
-    @Column(name = "actual_delivery_date")
     private LocalDate actualDeliveryDate;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-
-    @Column(name = "cancelled_at")
-    private LocalDateTime cancelledAt;
-
-    @Column(name = "cancellation_reason")
     private String cancellationReason;
 
-    // Added missing route fields for GoogleMapsService integration
-    @Column(name = "distance_km", precision = 10, scale = 2)
-    private BigDecimal distanceKm;
+    private String packageDescription;
+    private Double weight;
+    private String dimensions;
+    private Integer quantity;
+    private Double declaredValue;
+    private Boolean fragile;
 
-    @Column(name = "estimated_time_minutes")
-    private Integer estimatedTimeMinutes;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+
+        if (status == null) {
+            status = ShipmentStatus.CREATED;
+        }
+
+        if (fragile == null) {
+            fragile = false;
+        }
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private User customer;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_operator_id")
+    private User assignedOperator;
+
+    @OneToMany(
+            mappedBy = "shipment",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    @Builder.Default
+    private List<Package> packages = new ArrayList<>();
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }
