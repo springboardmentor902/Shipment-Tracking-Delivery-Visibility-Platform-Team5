@@ -1,42 +1,90 @@
+# ==============================
+# Maven / Java
+# ==============================
+
 HELP.md
 target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+**/target/
 
-### STS ###
+.mvn/wrapper/maven-wrapper.jar
+
+# ==============================
+# Spring Boot local configuration
+# ==============================
+
+src/main/resources/application.properties
+src/main/resources/application-*.properties
+
+# Keep template/example file for reference
+!src/main/resources/application.properties.example
+
+# ==============================
+# Logs / temporary files
+# ==============================
+
+*.log
+startup-error.txt
+
+# ==============================
+# Eclipse / STS
+# ==============================
+
 .apt_generated
 .classpath
 .factorypath
 .project
-.settings
+.settings/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
+# ==============================
+# IntelliJ IDEA
+# ==============================
+
+.idea/
 *.iws
 *.iml
 *.ipr
 
-### NetBeans ###
+# ==============================
+# NetBeans
+# ==============================
+
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
+# ==============================
+# VS Code
+# ==============================
+
 .vscode/
 
-# Application properties (contains sensitive credentials)
-/src/main/resources/application.properties
+# ==============================
+# Frontend / Node / Next.js
+# ==============================
 
-# Ignore local Spring configuration files
-*.properties
+# In case frontend files are ever inside backend
+node_modules/
+.next/
+dist/
+out/
 
-# Keep template/example file for reference
-!/src/main/resources/application.properties.example
+# ==============================
+# Environment variables / secrets
+# ==============================
+
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==============================
+# OS
+# ==============================
+
+.DS_Store
+Thumbs.db
