@@ -3,7 +3,12 @@ FROM maven:3.9-eclipse-temurin-24 AS build
 WORKDIR /app
 
 COPY pom.xml .
+
 COPY src ./src
+
+# Use the deployment configuration template
+# as the real Spring Boot configuration
+RUN cp src/main/resources/application.properties.example src/main/resources/application.properties
 
 RUN mvn clean package -DskipTests
 
