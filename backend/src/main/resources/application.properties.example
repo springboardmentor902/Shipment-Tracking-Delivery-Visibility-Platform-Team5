@@ -21,7 +21,7 @@ spring.jpa.properties.hibernate.format_sql=true
 # JWT
 # =========================================================
 
-jwt.secret=${JWT_SECRET}
+jwt.secret=${JWT_SECRET:ShipTrackProSuperSecretKeyForJWTSigningMustBeAtLeast256BitsLong}
 jwt.expiration=${JWT_EXPIRATION:86400000}
 
 # =========================================================
@@ -97,5 +97,5 @@ google.maps.api-key=${GOOGLE_MAPS_API_KEY:}
 # AWS S3
 # =========================================================
 
-aws.s3.bucket=${AWS_S3_BUCKET}
+aws.s3.bucket=${AWS_S3_BUCKET:shiptrack-pro-documents}
 aws.s3.region=${AWS_S3_REGION:ap-south-1}
